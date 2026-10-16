@@ -1,0 +1,21 @@
+# Project Overview: The Shared Wolf
+We are building a mobile-friendly web application for tracking wagers and carry-overs for the golf game "Wolf." The interface functions like a digital golf scorecard. 
+
+## Design & UI Requirements
+* The aesthetic must match "The Shared Fairway" blog branding: clean, modern, tabular ledger style. 
+* Use a color palette of dark golf greens (`#2E8B57`), light fairway creams (`#E9F5EC`), and sand trap accents (`#F4E4C1`).
+* The layout must be highly responsive and horizontally scrollable on mobile devices to accommodate all player columns without breaking alignment.
+* Player names at the top of the columns must be editable (defaulting to blanks, not "Player 1", etc.).
+
+## Betting Mechanics & Math Logic
+* **Player Count:** The app must accommodate 5 players total. 
+* **The Ledger Rule:** The app tracks whether the money is right by balancing it each hole. The total money won plus the total money lost across all players on any given hole must always equal exactly $0. 
+* **Continuous Calculation:** The math must calculate and display dollars won/lost dynamically as soon as each individual score and team designation is entered, rather than waiting for all 5 players to input scores.
+* **State Preservation:** The data must persist if the user accidentally refreshes or closes the tab (e.g., via LocalStorage), but the app should include a "Clear Board" / "Reset Game" button to start fresh.
+
+## Hole-by-Hole Features
+* **Base Value & Multipliers:** The default bet is $2 per hole. The user must be able to manually update this value on a hole-by-Hole basis if players decide to "double" the bet mid-hole.
+* **Carry-Overs:** If a hole is tied, the bet carries over to the next hole (adding $1 to the total value of the next hole). Carry-overs ONLY occur if the hole is tied, not if it is won or lost.
+* **Dynamic Teams:** Each hole requires a way to designate teams (Team A vs. Team B) via checkboxes, as teams change every hole and can range from 1 to 3 players.
+* **Greenies:** All Par 3s and Par 5s must include a "Greenie" checkbox. If checked, the team of the player who hit the green in regulation and made par wins an additional $1.
+* **Birdies:** Every hole must include a "B" (Birdie) checkbox for each player. If checked, an additional $1 is added to the bet for that team.

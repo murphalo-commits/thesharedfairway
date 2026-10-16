@@ -1,0 +1,4 @@
+node_modules/
+dist-godaddy/
+.DS_Store
+*.log
