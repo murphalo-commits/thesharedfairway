@@ -226,7 +226,7 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
               )}
               {result.birdieBonusDollars > 0 && (
                 <span className="text-[11px] bg-emerald-300 text-[#143F27] font-bold px-2 py-0.5 rounded-full font-mono">
-                  +$1 Birdie Bonus
+                  +${result.birdieBonusDollars} Birdie Bonus
                 </span>
               )}
               {result.greenieBonusDollars > 0 && (
@@ -542,7 +542,7 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                   {isBirdie && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300">
                       <Sparkles className="w-3.5 h-3.5" />
-                      {isEagle ? 'Eagle!' : 'Birdie'} (+$1)
+                      {isEagle ? 'Eagle!' : 'Birdie'} (+$2)
                     </span>
                   )}
 

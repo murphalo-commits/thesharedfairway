@@ -127,7 +127,7 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
     if (status === 'wolf_win') {
       const wolfTeamHasBirdie = wolfTeamIndices.some((idx) => birdiePlayerIndices.includes(idx));
       const wolfTeamHasGreenie = wolfTeamIndices.some((idx) => greeniePlayerIndices.includes(idx));
-      if (wolfTeamHasBirdie) birdieBonusDollars = 1;
+      if (wolfTeamHasBirdie) birdieBonusDollars = 2;
       if (wolfTeamHasGreenie) greenieBonusDollars = 1;
     } else if (status === 'non_wolf_win') {
       const nonWolfTeamHasBirdie = nonWolfTeamIndices.some((idx) =>
@@ -136,7 +136,7 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
       const nonWolfTeamHasGreenie = nonWolfTeamIndices.some((idx) =>
         greeniePlayerIndices.includes(idx)
       );
-      if (nonWolfTeamHasBirdie) birdieBonusDollars = 1;
+      if (nonWolfTeamHasBirdie) birdieBonusDollars = 2;
       if (nonWolfTeamHasGreenie) greenieBonusDollars = 1;
     }
 
