@@ -121,23 +121,29 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
     }
 
     // Determine bonuses for the winning team
+    // Each birdie made on the winning team adds $2 to the hole bet (e.g., 2 birdies = +$4).
+    // (If both teams make birdies with the same low score, status is 'push' so no payout occurs).
     let birdieBonusDollars = 0;
     let greenieBonusDollars = 0;
 
     if (status === 'wolf_win') {
-      const wolfTeamHasBirdie = wolfTeamIndices.some((idx) => birdiePlayerIndices.includes(idx));
-      const wolfTeamHasGreenie = wolfTeamIndices.some((idx) => greeniePlayerIndices.includes(idx));
-      if (wolfTeamHasBirdie) birdieBonusDollars = 2;
-      if (wolfTeamHasGreenie) greenieBonusDollars = 1;
-    } else if (status === 'non_wolf_win') {
-      const nonWolfTeamHasBirdie = nonWolfTeamIndices.some((idx) =>
+      const wolfTeamBirdieCount = wolfTeamIndices.filter((idx) =>
         birdiePlayerIndices.includes(idx)
-      );
-      const nonWolfTeamHasGreenie = nonWolfTeamIndices.some((idx) =>
+      ).length;
+      const wolfTeamGreenieCount = wolfTeamIndices.filter((idx) =>
         greeniePlayerIndices.includes(idx)
-      );
-      if (nonWolfTeamHasBirdie) birdieBonusDollars = 2;
-      if (nonWolfTeamHasGreenie) greenieBonusDollars = 1;
+      ).length;
+      birdieBonusDollars = wolfTeamBirdieCount * 2;
+      if (wolfTeamGreenieCount > 0) greenieBonusDollars = 1;
+    } else if (status === 'non_wolf_win') {
+      const nonWolfTeamBirdieCount = nonWolfTeamIndices.filter((idx) =>
+        birdiePlayerIndices.includes(idx)
+      ).length;
+      const nonWolfTeamGreenieCount = nonWolfTeamIndices.filter((idx) =>
+        greeniePlayerIndices.includes(idx)
+      ).length;
+      birdieBonusDollars = nonWolfTeamBirdieCount * 2;
+      if (nonWolfTeamGreenieCount > 0) greenieBonusDollars = 1;
     }
 
     const baseBet = Math.max(1, Math.round(hole.baseBet || 2));

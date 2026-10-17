@@ -611,9 +611,10 @@ export function App() {
                 </strong>
                 Starts at <strong>$2 Base Bet</strong> (editable or doublable via{' '}
                 <code>2× Press</code>) + <strong>+$1 per consecutive tied hole</strong>{' '}
-                (Carry-over) + <strong>+$2 Birdie Bonus</strong> (auto-detected when the
-                winning side scores under Par) + <strong>+$1 Greenie Bonus</strong> (on
-                Par 3s & Par 5s when checked for the winning side).
+                (Carry-over) + <strong>+$2 per Birdie on the winning team</strong> (e.g., 2
+                birdies on the winning team adds +$4; if both teams make birdie, the hole is a
+                Push) + <strong>+$1 Greenie Bonus</strong> (on Par 3s & Par 5s when checked for
+                the winning side).
               </div>
               <div className="p-3 rounded-xl bg-[#F4E4C1]/60 border border-[#DFC690]">
                 <strong className="text-[#143F27] block mb-1">
