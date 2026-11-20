@@ -13,6 +13,7 @@ const FALLBACK_COURSES_KEY = 'shared_wolf_custom_courses_v2';
 
 export interface ActiveRoundState {
   courseId: string;
+  playerCount?: 4 | 5;
   playerNames: string[]; // 5 names, defaults to ['', '', '', '', '']
   defaultBaseBet: number;
   holes: HoleState[];
@@ -22,15 +23,17 @@ export interface ActiveRoundState {
 
 export function createInitialHolesForCourse(
   course: CoursePreset,
-  defaultBaseBet = 2
+  defaultBaseBet = 2,
+  playerCount: 4 | 5 = 5
 ): HoleState[] {
+  // 5P rotates holes 1-15 (3x5) and auto-assigns 16-18; 4P rotates holes 1-16 (4x4) and auto-assigns 17-18
+  const rotationHoles = playerCount === 4 ? 16 : 15;
   return course.holes.map((h, idx) => ({
     holeNumber: h.hole,
     par: h.par,
     handicap: h.handicap,
     baseBet: defaultBaseBet,
-    // Default Wolf rotation 1->5 for holes 1->15, and leave 16-18 open (often lowest money or continued rotation)
-    wolfPlayerIndex: idx < 15 ? idx % 5 : null,
+    wolfPlayerIndex: idx < rotationHoles ? idx % playerCount : null,
     partnerPlayerIndex: null,
     isLoneWolf: false,
     players: Array.from({ length: 5 }, () => ({
@@ -46,7 +49,10 @@ export function loadActiveRound(): ActiveRoundState {
     if (raw) {
       const parsed = JSON.parse(raw) as ActiveRoundState;
       if (parsed && Array.isArray(parsed.holes) && parsed.holes.length === 18) {
-        return parsed;
+        return {
+          ...parsed,
+          playerCount: parsed.playerCount === 4 ? 4 : 5,
+        };
       }
     }
   } catch (e) {
@@ -56,9 +62,10 @@ export function loadActiveRound(): ActiveRoundState {
   const defaultCourse = PRESET_COURSES[0]; // Norbeck Country Club
   return {
     courseId: defaultCourse.id,
+    playerCount: 5,
     playerNames: ['', '', '', '', ''],
     defaultBaseBet: 2,
-    holes: createInitialHolesForCourse(defaultCourse, 2),
+    holes: createInitialHolesForCourse(defaultCourse, 2, 5),
     activeHoleNumber: 1,
     startedAtISO: new Date().toISOString(),
   };
@@ -256,8 +263,11 @@ export function computeSeasonAnalytics(rounds: SavedRound[]): {
   };
 
   for (const round of rounds) {
-    const names = round.playerNames.map((n, i) => normalizeName(n, i));
-    const holeResults = calculateRoundResults(round.holes);
+    const pCount: 4 | 5 = round.playerCount === 4 ? 4 : 5;
+    const names = round.playerNames
+      .slice(0, pCount)
+      .map((n, i) => normalizeName(n, i));
+    const holeResults = calculateRoundResults(round.holes, pCount);
 
     names.forEach((name, idx) => {
       const pStat = getOrCreatePlayer(name);
@@ -273,15 +283,17 @@ export function computeSeasonAnalytics(rounds: SavedRound[]): {
       if (!res || res.status === 'incomplete') return;
 
       const wolfIdx = res.effectiveWolfIndex;
-      if (wolfIdx === null) return;
+      if (wolfIdx === null || wolfIdx >= pCount) return;
       const partnerIdx =
-        hole.isLoneWolf || hole.partnerPlayerIndex === wolfIdx
+        hole.isLoneWolf ||
+        hole.partnerPlayerIndex === wolfIdx ||
+        (hole.partnerPlayerIndex !== null && hole.partnerPlayerIndex >= pCount)
           ? null
           : hole.partnerPlayerIndex;
 
       const wolfTeam = partnerIdx !== null ? [wolfIdx, partnerIdx] : [wolfIdx];
 
-      for (let p = 0; p < 5; p++) {
+      for (let p = 0; p < pCount; p++) {
         const pStat = getOrCreatePlayer(names[p]);
         if (hole.players[p]?.score !== null) {
           pStat.holesPlayed += 1;
@@ -306,9 +318,9 @@ export function computeSeasonAnalytics(rounds: SavedRound[]): {
         }
       }
 
-      // Pairwise Head-to-Head across the 5 players
-      for (let i = 0; i < 5; i++) {
-        for (let j = i + 1; j < 5; j++) {
+      // Pairwise Head-to-Head across the active players
+      for (let i = 0; i < pCount; i++) {
+        for (let j = i + 1; j < pCount; j++) {
           const nameI = names[i];
           const nameJ = names[j];
           const [first, second, iIsFirst] =

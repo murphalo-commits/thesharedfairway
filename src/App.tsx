@@ -61,14 +61,20 @@ export function App() {
     getCustomCourses().then(setCustomCourses);
   }, []);
 
+  const playerCount: 4 | 5 = roundState.playerCount === 4 ? 4 : 5;
+  const activePlayerIndices = useMemo(
+    () => Array.from({ length: playerCount }, (_, i) => i),
+    [playerCount]
+  );
+
   // Automatically persist active round on every edit
   useEffect(() => {
     saveActiveRound(roundState);
   }, [roundState]);
 
   const results = useMemo(
-    () => calculateRoundResults(roundState.holes),
-    [roundState.holes]
+    () => calculateRoundResults(roundState.holes, playerCount),
+    [roundState.holes, playerCount]
   );
 
   const finalTotals =
@@ -78,6 +84,46 @@ export function App() {
     () => results.every((r) => r.isBalanced),
     [results]
   );
+
+  const handlePlayerCountChange = (newCount: 4 | 5) => {
+    const rotationHoles = newCount === 4 ? 16 : 15;
+    setRoundState((prev) => {
+      const hasAnyScores = prev.holes.some((h) =>
+        h.players.some((p) => p.score !== null)
+      );
+      return {
+        ...prev,
+        playerCount: newCount,
+        holes: prev.holes.map((h, idx) => {
+          // If no scores have been entered yet, update the default Wolf rotation (1-16 for 4P, 1-15 for 5P)
+          if (!hasAnyScores) {
+            return {
+              ...h,
+              wolfPlayerIndex: idx < rotationHoles ? idx % newCount : null,
+              partnerPlayerIndex:
+                h.partnerPlayerIndex !== null && h.partnerPlayerIndex >= newCount
+                  ? null
+                  : h.partnerPlayerIndex,
+            };
+          }
+          // If switching mid-round, ensure hole 16 has its rotation or auto-wolf slot set appropriately and clamp indices
+          return {
+            ...h,
+            wolfPlayerIndex:
+              idx >= rotationHoles
+                ? null
+                : h.wolfPlayerIndex !== null && h.wolfPlayerIndex >= newCount
+                ? h.wolfPlayerIndex % newCount
+                : h.wolfPlayerIndex ?? idx % newCount,
+            partnerPlayerIndex:
+              h.partnerPlayerIndex !== null && h.partnerPlayerIndex >= newCount
+                ? null
+                : h.partnerPlayerIndex,
+          };
+        }),
+      };
+    });
+  };
 
   const handleCourseChange = (newCourseId: string) => {
     const course = allCourses.find((c) => c.id === newCourseId);
@@ -120,7 +166,11 @@ export function App() {
   const handleResetBoard = () => {
     setRoundState((prev) => ({
       ...prev,
-      holes: createInitialHolesForCourse(selectedCourse, prev.defaultBaseBet),
+      holes: createInitialHolesForCourse(
+        selectedCourse,
+        prev.defaultBaseBet,
+        prev.playerCount === 4 ? 4 : 5
+      ),
       activeHoleNumber: 1,
       startedAtISO: new Date().toISOString(),
     }));
@@ -145,6 +195,7 @@ export function App() {
       dateISO: new Date().toISOString(),
       courseId: selectedCourse.id,
       courseName: selectedCourse.name,
+      playerCount,
       playerNames: [...roundState.playerNames],
       holes: roundState.holes,
       finalTotals: [...finalTotals],
@@ -282,13 +333,34 @@ export function App() {
                   </span>
                 </div>
                 <p className="text-[11px] text-[#E9F5EC]/80">
-                  5-Player Wolf Scorecard, Live Zero-Sum Ledger & Season Tracker
+                  {playerCount}-Player Wolf Scorecard, Live Zero-Sum Ledger & Season Tracker
                 </p>
               </div>
             </div>
 
-            {/* Course Selector & Quick Actions */}
+            {/* Course Selector, 4P/5P Switcher & Quick Actions */}
             <div className="flex flex-wrap items-center gap-2">
+              {/* 4 Players / 5 Players Toggle */}
+              <div
+                className="flex items-center bg-white/10 rounded-xl p-1 border border-white/15"
+                title="Switch between 4 Players and 5 Players"
+              >
+                {([4, 5] as const).map((cnt) => (
+                  <button
+                    key={cnt}
+                    type="button"
+                    onClick={() => handlePlayerCountChange(cnt)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                      playerCount === cnt
+                        ? 'bg-[#F4E4C1] text-[#143F27] shadow-sm'
+                        : 'text-white/80 hover:text-white'
+                    }`}
+                  >
+                    {cnt}P
+                  </button>
+                ))}
+              </div>
+
               <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/15">
                 <select
                   value={roundState.courseId}
@@ -333,9 +405,13 @@ export function App() {
             </div>
           </div>
 
-          {/* Live 5-Player Sticky Scoreboard Ribbon */}
-          <div className="mt-3 pt-2.5 border-t border-white/15 grid grid-cols-5 gap-1.5 sm:gap-2">
-            {[0, 1, 2, 3, 4].map((idx) => {
+          {/* Live Sticky Scoreboard Ribbon */}
+          <div
+            className={`mt-3 pt-2.5 border-t border-white/15 grid ${
+              playerCount === 4 ? 'grid-cols-4' : 'grid-cols-5'
+            } gap-1.5 sm:gap-2`}
+          >
+            {activePlayerIndices.map((idx) => {
               const net = finalTotals[idx];
               const name = roundState.playerNames[idx]?.trim() || `P${idx + 1}`;
               const isWolfNow = activeResult?.effectiveWolfIndex === idx;
@@ -429,6 +505,7 @@ export function App() {
           <HoleCaddieCard
             hole={activeHole}
             result={activeResult}
+            playerCount={playerCount}
             playerNames={roundState.playerNames}
             onPlayerNameChange={handlePlayerNameChange}
             onSelectHole={(hNum) =>
@@ -445,6 +522,7 @@ export function App() {
           <FullLedgerTable
             holes={roundState.holes}
             results={results}
+            playerCount={playerCount}
             playerNames={roundState.playerNames}
             activeHoleNumber={roundState.activeHoleNumber}
             onPlayerNameChange={handlePlayerNameChange}
@@ -458,6 +536,7 @@ export function App() {
         {viewMode === 'season' && (
           <SeasonHistoryView
             currentCourseName={selectedCourse.name}
+            playerCount={playerCount}
             currentPlayerNames={roundState.playerNames}
             currentHoles={roundState.holes}
             currentResults={results}
@@ -618,9 +697,9 @@ export function App() {
               </div>
               <div className="p-3 rounded-xl bg-[#F4E4C1]/60 border border-[#DFC690]">
                 <strong className="text-[#143F27] block mb-1">
-                  3. 2 vs 3 Payouts (Wolf Takes Overage)
+                  3. Team Wolf Payouts (2 vs 3 in 5P • 2 vs 2 in 4P)
                 </strong>
-                When Wolf picks a Partner (2 vs 3), the 3 Pack players always win or
+                <strong>In 5-Player (2 vs 3):</strong> The 3 Pack players always win or
                 lose <strong>$V each</strong> (Total Pot = <strong>$3V</strong>). The 2
                 Wolf-team players split $3V, and any odd dollar overage on wins{' '}
                 <em>or</em> losses goes to the Wolf:
@@ -628,14 +707,19 @@ export function App() {
                   <li>$2 Hole ($6 Pot): Wolf ±$3, Partner ±$3, Pack ∓$2 each</li>
                   <li>$3 Hole ($9 Pot): Wolf ±$5, Partner ±$4, Pack ∓$3 each</li>
                 </ul>
+                <div className="mt-1.5">
+                  <strong>In 4-Player (2 vs 2):</strong> Even 2-on-2 sides — the 2 winners
+                  each win <strong>+$V</strong> and the 2 losers each lose{' '}
+                  <strong>-$V</strong> (Total Pot = <strong>$2V</strong>).
+                </div>
               </div>
               <div className="p-3 rounded-xl bg-[#E9F5EC] border border-[#2E8B57]/20">
                 <strong className="text-[#143F27] block mb-1">
-                  4. 1 vs 4 Payouts (Lone Wolf)
+                  4. Lone Wolf Payouts (1 vs 4 in 5P • 1 vs 3 in 4P)
                 </strong>
-                When the Wolf goes solo (1 vs 4), the Pot is <strong>$4V</strong>. If
-                Lone Wolf wins, they collect +$4V (-$V from each of the 4 others). If
-                Lone Wolf loses, they pay -$4V (+$V to each of the 4 winners).
+                When the Wolf goes solo against the Pack, each Pack member wins or loses{' '}
+                <strong>$V</strong> (Pot = <strong>$4V</strong> in 5-Player, or{' '}
+                <strong>$3V</strong> in 4-Player). Lone Wolf wins or pays the entire pot.
               </div>
             </div>
           </div>

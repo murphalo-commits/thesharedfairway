@@ -55,7 +55,8 @@ export interface SavedRound {
   dateISO: string;
   courseId: string;
   courseName: string;
-  playerNames: string[]; // length 5
+  playerCount?: 4 | 5;
+  playerNames: string[]; // length 5 (or 4 active)
   holes: HoleState[];
   finalTotals: number[]; // length 5 net dollars
   finalGrossScores: (number | null)[]; // length 5 total strokes

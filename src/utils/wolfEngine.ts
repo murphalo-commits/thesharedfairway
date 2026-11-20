@@ -23,51 +23,75 @@ import { HoleCalculationResult, HoleState, SettlementTransfer } from '../types';
  *       - Partner gets ±Math.floor((3 * V) / 2)
  *       - Wolf gets ±Math.ceil((3 * V) / 2)
  */
-export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult[] {
+export function calculateRoundResults(
+  holes: HoleState[],
+  playerCount: 4 | 5 = 5
+): HoleCalculationResult[] {
   const results: HoleCalculationResult[] = [];
   let carryOverDollars = 0;
   const runningTotals = [0, 0, 0, 0, 0];
+
+  // In 5-Player, 3 full rotations = holes 1-15, so Low-Money Auto-Wolf starts on Hole 16.
+  // In 4-Player, 4 full rotations = holes 1-16, so Low-Money Auto-Wolf starts on Hole 17.
+  const autoWolfStartHole = playerCount === 4 ? 17 : 16;
 
   for (let i = 0; i < holes.length; i++) {
     const hole = holes[i];
     const carryInDollars = carryOverDollars;
 
-    // On holes 16, 17, 18, whoever is losing the most money (lowest running total)
-    // automatically becomes the Wolf unless manually overridden on that hole.
+    // On the closing holes (16-18 in 5P, 17-18 in 4P), whoever is losing the most money
+    // (lowest running total) automatically becomes the Wolf unless manually overridden.
     let tiedForLowMoneyIndices: number[] = [];
     let autoWolfCandidate: number | null = null;
 
-    if (hole.holeNumber >= 16) {
+    if (hole.holeNumber >= autoWolfStartHole) {
       const hasAnyCompletedPriorHole = results.some((r) => r.status !== 'incomplete');
       if (hasAnyCompletedPriorHole) {
-        const minTotal = Math.min(...runningTotals);
-        tiedForLowMoneyIndices = runningTotals
+        const activeRunningTotals = runningTotals.slice(0, playerCount);
+        const minTotal = Math.min(...activeRunningTotals);
+        tiedForLowMoneyIndices = activeRunningTotals
           .map((tot, idx) => (tot === minTotal ? idx : -1))
           .filter((idx) => idx !== -1);
         autoWolfCandidate = tiedForLowMoneyIndices[0] ?? null;
       }
     }
 
+    const manualWolfValid =
+      hole.wolfPlayerIndex !== null &&
+      hole.wolfPlayerIndex >= 0 &&
+      hole.wolfPlayerIndex < playerCount
+        ? hole.wolfPlayerIndex
+        : null;
+
     const isAutoAssignedWolf =
-      hole.wolfPlayerIndex === null && hole.holeNumber >= 16 && autoWolfCandidate !== null;
+      manualWolfValid === null &&
+      hole.holeNumber >= autoWolfStartHole &&
+      autoWolfCandidate !== null;
 
     const wolfIdx =
-      hole.wolfPlayerIndex !== null ? hole.wolfPlayerIndex : autoWolfCandidate;
+      manualWolfValid !== null ? manualWolfValid : autoWolfCandidate;
+
+    const rawPartnerIdx =
+      hole.partnerPlayerIndex !== null &&
+      hole.partnerPlayerIndex >= 0 &&
+      hole.partnerPlayerIndex < playerCount
+        ? hole.partnerPlayerIndex
+        : null;
 
     const partnerIdx =
-      hole.isLoneWolf || hole.partnerPlayerIndex === wolfIdx
+      hole.isLoneWolf || rawPartnerIdx === wolfIdx
         ? null
-        : hole.partnerPlayerIndex;
+        : rawPartnerIdx;
 
     const wolfTeamIndices: number[] = [];
     const nonWolfTeamIndices: number[] = [];
 
-    if (wolfIdx !== null && wolfIdx >= 0 && wolfIdx < 5) {
+    if (wolfIdx !== null && wolfIdx >= 0 && wolfIdx < playerCount) {
       wolfTeamIndices.push(wolfIdx);
-      if (partnerIdx !== null && partnerIdx >= 0 && partnerIdx < 5 && partnerIdx !== wolfIdx) {
+      if (partnerIdx !== null && partnerIdx >= 0 && partnerIdx < playerCount && partnerIdx !== wolfIdx) {
         wolfTeamIndices.push(partnerIdx);
       }
-      for (let p = 0; p < 5; p++) {
+      for (let p = 0; p < playerCount; p++) {
         if (!wolfTeamIndices.includes(p)) {
           nonWolfTeamIndices.push(p);
         }
@@ -79,8 +103,9 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
     const eaglePlayerIndices: number[] = [];
     const greeniePlayerIndices: number[] = [];
 
-    for (let p = 0; p < 5; p++) {
+    for (let p = 0; p < playerCount; p++) {
       const pState = hole.players[p];
+      if (!pState) continue;
       if (pState.score !== null && pState.score > 0) {
         if (pState.score <= hole.par - 1 || pState.manualBirdieOverride) {
           birdiePlayerIndices.push(p);
@@ -99,11 +124,11 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
 
     // Calculate best (lowest) score on each team from available entered scores
     const wolfScores = wolfTeamIndices
-      .map((idx) => hole.players[idx].score)
+      .map((idx) => hole.players[idx]?.score ?? null)
       .filter((s): s is number => s !== null && s > 0);
 
     const nonWolfScores = nonWolfTeamIndices
-      .map((idx) => hole.players[idx].score)
+      .map((idx) => hole.players[idx]?.score ?? null)
       .filter((s): s is number => s !== null && s > 0);
 
     const wolfTeamBestScore = wolfScores.length > 0 ? Math.min(...wolfScores) : null;
@@ -152,18 +177,22 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
 
     const playerNetDollars = [0, 0, 0, 0, 0];
     let totalPot = 0;
+    const packCount = nonWolfTeamIndices.length; // 4 or 3 in 5P; 3 or 2 in 4P
 
     if (status === 'wolf_win' && wolfIdx !== null) {
       if (partnerIdx === null) {
-        // Lone Wolf (1 vs 4): Pot = 4 * V
-        totalPot = 4 * effectiveHoleValue;
+        // Lone Wolf (1 vs 4 in 5P, or 1 vs 3 in 4P): Pot = packCount * V
+        totalPot = packCount * effectiveHoleValue;
         playerNetDollars[wolfIdx] = totalPot;
         for (const loserIdx of nonWolfTeamIndices) {
           playerNetDollars[loserIdx] = -effectiveHoleValue;
         }
       } else {
-        // Wolf + Partner (2 vs 3): Pot = 3 * V, Wolf gets ceil(3V/2), Partner gets floor(3V/2)
-        totalPot = 3 * effectiveHoleValue;
+        // Wolf + Partner (2 vs 3 in 5P, or 2 vs 2 in 4P):
+        // Each losing Pack player pays $V -> Total Pot = packCount * V.
+        // Wolf gets ceil(Pot / 2), Partner gets floor(Pot / 2)
+        // (In 4P 2v2, packCount = 2 so Pot = 2V -> Wolf and Partner each get +$V)
+        totalPot = packCount * effectiveHoleValue;
         const wolfShare = Math.ceil(totalPot / 2);
         const partnerShare = Math.floor(totalPot / 2);
         playerNetDollars[wolfIdx] = wolfShare;
@@ -176,15 +205,17 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
       carryOverDollars = 0;
     } else if (status === 'non_wolf_win' && wolfIdx !== null) {
       if (partnerIdx === null) {
-        // Lone Wolf (1 vs 4) loses: Wolf owes 4 * V, each of the 4 winners gets +V
-        totalPot = 4 * effectiveHoleValue;
+        // Lone Wolf loses: Wolf owes packCount * V, each Pack winner gets +V
+        totalPot = packCount * effectiveHoleValue;
         playerNetDollars[wolfIdx] = -totalPot;
         for (const winnerIdx of nonWolfTeamIndices) {
           playerNetDollars[winnerIdx] = effectiveHoleValue;
         }
       } else {
-        // Wolf + Partner (2 vs 3) loses: 3 winners each get +V (Pot = 3V), Wolf owes ceil(3V/2), Partner owes floor(3V/2)
-        totalPot = 3 * effectiveHoleValue;
+        // Wolf + Partner loses: each Pack winner gets +V (Pot = packCount * V),
+        // Wolf owes ceil(Pot / 2), Partner owes floor(Pot / 2)
+        // (In 4P 2v2, packCount = 2 so Pot = 2V -> Wolf and Partner each lose -$V)
+        totalPot = packCount * effectiveHoleValue;
         const wolfLoss = Math.ceil(totalPot / 2);
         const partnerLoss = Math.floor(totalPot / 2);
         playerNetDollars[wolfIdx] = -wolfLoss;
@@ -200,11 +231,13 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
       carryOverDollars = carryInDollars + 1;
     }
 
-    for (let p = 0; p < 5; p++) {
+    for (let p = 0; p < playerCount; p++) {
       runningTotals[p] += playerNetDollars[p];
     }
 
-    const netSum = playerNetDollars.reduce((acc, val) => acc + val, 0);
+    const netSum = playerNetDollars
+      .slice(0, playerCount)
+      .reduce((acc, val) => acc + val, 0);
 
     results.push({
       holeNumber: hole.holeNumber,
@@ -236,12 +269,13 @@ export function calculateRoundResults(holes: HoleState[]): HoleCalculationResult
  */
 export function calculateMinimumSettlements(
   playerNames: string[],
-  netTotals: number[]
+  netTotals: number[],
+  playerCount: 4 | 5 = 5
 ): SettlementTransfer[] {
   const debtors: { name: string; amount: number }[] = [];
   const creditors: { name: string; amount: number }[] = [];
 
-  netTotals.forEach((net, idx) => {
+  netTotals.slice(0, playerCount).forEach((net, idx) => {
     const displayName = playerNames[idx]?.trim() || `Player ${idx + 1}`;
     if (net < 0) {
       debtors.push({ name: displayName, amount: Math.abs(net) });

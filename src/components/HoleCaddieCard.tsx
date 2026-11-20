@@ -16,6 +16,7 @@ import { HoleCalculationResult, HoleState } from '../types';
 interface HoleCaddieCardProps {
   hole: HoleState;
   result: HoleCalculationResult;
+  playerCount: 4 | 5;
   playerNames: string[];
   onPlayerNameChange: (index: number, name: string) => void;
   onSelectHole: (holeNumber: number) => void;
@@ -26,6 +27,7 @@ interface HoleCaddieCardProps {
 export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
   hole,
   result,
+  playerCount,
   playerNames,
   onPlayerNameChange,
   onSelectHole,
@@ -34,6 +36,10 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
 }) => {
   const canGreenie = hole.par === 3 || hole.par === 5;
   const effectiveWolfIdx = result.effectiveWolfIndex;
+  const activePlayerIndices = Array.from({ length: playerCount }, (_, i) => i);
+  const packSizeLone = playerCount - 1; // 4 in 5P, 3 in 4P
+  const packSizeTeam = playerCount - 2; // 3 in 5P, 2 in 4P
+  const autoWolfStartHole = playerCount === 4 ? 17 : 16;
   const latestTotals =
     allResults.length === 18 ? allResults[17].playerRunningTotals : [0, 0, 0, 0, 0];
 
@@ -315,11 +321,11 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
         </div>
       </div>
 
-      {/* Holes 16-18 Low-Money Auto-Wolf Banner & Lone Wolf Quick Toggle */}
+      {/* Closing Holes Low-Money Auto-Wolf Banner & Lone Wolf Quick Toggle */}
       {effectiveWolfIdx !== null ? (
         <div className="flex flex-wrap items-center justify-between gap-2 bg-[#F4E4C1]/60 border border-[#DFC690] rounded-xl px-3.5 py-2.5">
           <div className="text-xs font-medium text-slate-800">
-            {hole.holeNumber >= 16 && result.isAutoAssignedWolf && (
+            {hole.holeNumber >= autoWolfStartHole && result.isAutoAssignedWolf && (
               <span className="inline-block mr-1.5 px-2 py-0.5 rounded bg-[#143F27] text-[#F4E4C1] font-mono text-[10px] font-bold uppercase tracking-wide">
                 Auto Low-Money Wolf (Hole {hole.holeNumber})
               </span>
@@ -329,19 +335,19 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                 `Player ${effectiveWolfIdx + 1}`}
             </span>{' '}
             is the Wolf on Hole {hole.holeNumber}.{' '}
-            {hole.isLoneWolf || hole.partnerPlayerIndex === null ? (
+            {hole.isLoneWolf || hole.partnerPlayerIndex === null || hole.partnerPlayerIndex >= playerCount ? (
               <span className="font-semibold text-amber-900">
-                Currently 1 vs 4 (Lone Wolf — $4V pot)
+                Currently 1 vs {packSizeLone} (Lone Wolf — ${packSizeLone}V pot)
               </span>
             ) : (
               <span className="font-semibold text-[#1E5E3A]">
                 Partnered with{' '}
                 {playerNames[hole.partnerPlayerIndex]?.trim() ||
                   `Player ${hole.partnerPlayerIndex + 1}`}{' '}
-                (2 vs 3 — $3V pot, Wolf gets odd $)
+                (2 vs {packSizeTeam} — ${packSizeTeam}V pot{playerCount === 5 ? ', Wolf gets odd $' : ', even split'})
               </span>
             )}
-            {hole.holeNumber >= 16 && result.tiedForLowMoneyIndices.length > 1 && (
+            {hole.holeNumber >= autoWolfStartHole && result.tiedForLowMoneyIndices.length > 1 && (
               <div className="text-[11px] text-amber-900 mt-1">
                 Note: Tied for lowest money entering Hole {hole.holeNumber} (
                 {result.tiedForLowMoneyIndices
@@ -366,7 +372,7 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
           </button>
         </div>
       ) : (
-        hole.holeNumber >= 16 && (
+        hole.holeNumber >= autoWolfStartHole && (
           <div className="bg-[#F4E4C1]/60 border border-[#DFC690] rounded-xl px-3.5 py-2.5 text-xs text-amber-950 font-medium">
             🐺 <strong>Hole {hole.holeNumber} Low-Money Wolf Rule:</strong> Whoever is
             losing the most money entering Hole {hole.holeNumber} will automatically
@@ -376,9 +382,9 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
         )
       )}
 
-      {/* 5 Player Cards */}
+      {/* Active Player Cards */}
       <div className="space-y-2.5">
-        {[0, 1, 2, 3, 4].map((pIdx) => {
+        {activePlayerIndices.map((pIdx) => {
           const pState = hole.players[pIdx];
           const isWolf = effectiveWolfIdx === pIdx;
           const isPartner = !hole.isLoneWolf && hole.partnerPlayerIndex === pIdx && !isWolf;

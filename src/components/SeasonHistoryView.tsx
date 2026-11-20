@@ -21,6 +21,7 @@ import { computeSeasonAnalytics } from '../utils/storage';
 
 interface SeasonHistoryModalProps {
   currentCourseName: string;
+  playerCount: 4 | 5;
   currentPlayerNames: string[];
   currentHoles: HoleState[];
   currentResults: HoleCalculationResult[];
@@ -32,6 +33,7 @@ interface SeasonHistoryModalProps {
 
 export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
   currentCourseName,
+  playerCount,
   currentPlayerNames,
   currentHoles,
   currentResults,
@@ -43,6 +45,7 @@ export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
   const [roundNotes, setRoundNotes] = useState('');
   const [justSaved, setJustSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activePlayerIndices = Array.from({ length: playerCount }, (_, i) => i);
 
   const finalTotals =
     currentResults.length === 18
@@ -53,7 +56,11 @@ export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
     (r) => r.status !== 'incomplete'
   ).length;
 
-  const settlements = calculateMinimumSettlements(currentPlayerNames, finalTotals);
+  const settlements = calculateMinimumSettlements(
+    currentPlayerNames,
+    finalTotals,
+    playerCount
+  );
   const { playerStats, headToHead } = computeSeasonAnalytics(savedRounds);
 
   const handleSaveClick = async () => {
@@ -129,10 +136,10 @@ export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
           {/* Left: Net Standing per Player */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-              Current Round Ledger
+              Current Round Ledger ({playerCount} Players)
             </h3>
             <div className="space-y-2">
-              {[0, 1, 2, 3, 4].map((idx) => {
+              {activePlayerIndices.map((idx) => {
                 const name = currentPlayerNames[idx]?.trim() || `Player ${idx + 1}`;
                 const net = finalTotals[idx];
                 const strokes = currentHoles.reduce(
@@ -460,7 +467,7 @@ export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    {r.playerNames.map((n, idx) => {
+                    {r.playerNames.slice(0, r.playerCount ?? 5).map((n, idx) => {
                       const disp = n?.trim() || `P${idx + 1}`;
                       const net = r.finalTotals[idx] ?? 0;
                       return (

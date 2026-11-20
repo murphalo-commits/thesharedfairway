@@ -5,6 +5,7 @@ import { HoleCalculationResult, HoleState } from '../types';
 interface FullLedgerTableProps {
   holes: HoleState[];
   results: HoleCalculationResult[];
+  playerCount: 4 | 5;
   playerNames: string[];
   activeHoleNumber: number;
   onPlayerNameChange: (index: number, name: string) => void;
@@ -15,12 +16,14 @@ interface FullLedgerTableProps {
 export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
   holes,
   results,
+  playerCount,
   playerNames,
   activeHoleNumber,
   onPlayerNameChange,
   onSelectHole,
   onUpdateHole,
 }) => {
+  const activePlayerIndices = Array.from({ length: playerCount }, (_, i) => i);
   const renderHoleRow = (hole: HoleState, idx: number) => {
     const res = results[idx];
     const canGreenie = hole.par === 3 || hole.par === 5;
@@ -115,8 +118,8 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
           </div>
         </td>
 
-        {/* 5 Player Columns */}
-        {[0, 1, 2, 3, 4].map((pIdx) => {
+        {/* Active Player Columns */}
+        {activePlayerIndices.map((pIdx) => {
           const pState = hole.players[pIdx];
           const effectiveWolfIdx = res.effectiveWolfIndex;
           const isWolf = effectiveWolfIdx === pIdx;
@@ -318,7 +321,7 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
         <td className="px-2 py-2.5 text-center border-r border-white/15 text-[#F4E4C1]">
           Net / Strokes
         </td>
-        {[0, 1, 2, 3, 4].map((pIdx) => {
+        {activePlayerIndices.map((pIdx) => {
           const dollarSum = sliceResults.reduce(
             (acc, r) => acc + r.playerNetDollars[pIdx],
             0
@@ -359,7 +362,7 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
     <div className="bg-white rounded-2xl shadow-sm border border-[#2E8B57]/25 overflow-hidden">
       <div className="px-4 py-3 bg-[#E9F5EC] border-b border-[#2E8B57]/20 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-medium text-[#143F27]">
-          <span className="font-bold">Ledger Legend:</span> Tap <kbd className="px-1.5 py-0.5 bg-[#143F27] text-[#F4E4C1] rounded text-[10px] font-bold">W</kbd> for Wolf, <kbd className="px-1.5 py-0.5 bg-[#2E8B57] text-white rounded text-[10px] font-bold">P</kbd> for Partner (leave P blank for Lone Wolf 1v4). <kbd className="px-1 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">B✓</kbd> auto-triggers on Birdie; check <kbd className="px-1 py-0.5 bg-white border rounded text-[10px] font-bold">G</kbd> for Greenies on Par 3s & 5s.
+          <span className="font-bold">Ledger Legend:</span> Tap <kbd className="px-1.5 py-0.5 bg-[#143F27] text-[#F4E4C1] rounded text-[10px] font-bold">W</kbd> for Wolf, <kbd className="px-1.5 py-0.5 bg-[#2E8B57] text-white rounded text-[10px] font-bold">P</kbd> for Partner (leave P blank for Lone Wolf 1v{playerCount - 1}). <kbd className="px-1 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">B✓</kbd> auto-triggers on Birdie (+$2 each); check <kbd className="px-1 py-0.5 bg-white border rounded text-[10px] font-bold">G</kbd> for Greenies on Par 3s & 5s.
         </div>
       </div>
 
@@ -373,7 +376,7 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
               <th className="px-2 py-3 text-xs font-semibold text-center border-r border-white/15 min-w-[92px]">
                 Bet / Stake
               </th>
-              {[0, 1, 2, 3, 4].map((pIdx) => (
+              {activePlayerIndices.map((pIdx) => (
                 <th
                   key={pIdx}
                   className="px-2 py-2.5 border-r border-white/15 min-w-[142px]"
