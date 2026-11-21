@@ -49,7 +49,10 @@ export const SeasonHistoryView: React.FC<SeasonHistoryModalProps> = ({
 
   const finalTotals =
     currentResults.length === 18
-      ? currentResults[17].playerRunningTotals
+      ? (
+          currentResults.find((r) => r.playOrderNumber === 18) ??
+          currentResults[17]
+        ).playerRunningTotals
       : [0, 0, 0, 0, 0];
 
   const completedHolesCount = currentResults.filter(

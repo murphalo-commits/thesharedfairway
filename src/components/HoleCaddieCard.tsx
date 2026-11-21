@@ -17,6 +17,7 @@ interface HoleCaddieCardProps {
   hole: HoleState;
   result: HoleCalculationResult;
   playerCount: 4 | 5;
+  startingHole: number;
   playerNames: string[];
   onPlayerNameChange: (index: number, name: string) => void;
   onSelectHole: (holeNumber: number) => void;
@@ -28,6 +29,7 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
   hole,
   result,
   playerCount,
+  startingHole,
   playerNames,
   onPlayerNameChange,
   onSelectHole,
@@ -39,9 +41,25 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
   const activePlayerIndices = Array.from({ length: playerCount }, (_, i) => i);
   const packSizeLone = playerCount - 1; // 4 in 5P, 3 in 4P
   const packSizeTeam = playerCount - 2; // 3 in 5P, 2 in 4P
-  const autoWolfStartHole = playerCount === 4 ? 17 : 16;
+
+  // Build play-order sequence of results (e.g. Hole 10..18 -> 1..9 for a Hole 10 shotgun start)
+  const orderedResults = [...allResults].sort(
+    (a, b) => a.playOrderNumber - b.playOrderNumber
+  );
   const latestTotals =
-    allResults.length === 18 ? allResults[17].playerRunningTotals : [0, 0, 0, 0, 0];
+    orderedResults.length === 18
+      ? orderedResults[17].playerRunningTotals
+      : [0, 0, 0, 0, 0];
+
+  const currentOrderIdx = orderedResults.findIndex(
+    (r) => r.holeNumber === hole.holeNumber
+  );
+  const prevHoleInOrder =
+    currentOrderIdx > 0 ? orderedResults[currentOrderIdx - 1].holeNumber : null;
+  const nextHoleInOrder =
+    currentOrderIdx >= 0 && currentOrderIdx < 17
+      ? orderedResults[currentOrderIdx + 1].holeNumber
+      : null;
 
   const handleSetWolf = (playerIdx: number) => {
     onUpdateHole((prev) => {
@@ -101,6 +119,17 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
     });
   };
 
+  const handleToggleSandie = (playerIdx: number) => {
+    onUpdateHole((prev) => {
+      const nextPlayers = [...prev.players];
+      nextPlayers[playerIdx] = {
+        ...nextPlayers[playerIdx],
+        sandie: !nextPlayers[playerIdx].sandie,
+      };
+      return { ...prev, players: nextPlayers };
+    });
+  };
+
   const handleBaseBetChange = (newBet: number) => {
     onUpdateHole((prev) => ({
       ...prev,
@@ -131,8 +160,8 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <button
             type="button"
-            onClick={() => onSelectHole(Math.max(1, hole.holeNumber - 1))}
-            disabled={hole.holeNumber === 1}
+            onClick={() => prevHoleInOrder !== null && onSelectHole(prevHoleInOrder)}
+            disabled={prevHoleInOrder === null}
             className="flex items-center gap-1 px-3 py-2 rounded-xl bg-[#E9F5EC] text-[#1E5E3A] font-semibold text-sm disabled:opacity-40 active:scale-95 transition"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -140,13 +169,18 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
           </button>
 
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <span className="font-serif font-bold text-xl text-[#143F27]">
                 Hole {hole.holeNumber}
               </span>
               <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-[#F4E4C1] text-[#143F27]">
                 HDCP {hole.handicap}
               </span>
+              {startingHole !== 1 && (
+                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#E9F5EC] text-[#1E5E3A] border border-[#2E8B57]/30">
+                  Play #{result.playOrderNumber}/18
+                </span>
+              )}
             </div>
             <div className="flex items-center justify-center gap-1.5 mt-1">
               {([3, 4, 5] as const).map((p) => (
@@ -168,8 +202,8 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
 
           <button
             type="button"
-            onClick={() => onSelectHole(Math.min(18, hole.holeNumber + 1))}
-            disabled={hole.holeNumber === 18}
+            onClick={() => nextHoleInOrder !== null && onSelectHole(nextHoleInOrder)}
+            disabled={nextHoleInOrder === null}
             className="flex items-center gap-1 px-3 py-2 rounded-xl bg-[#2E8B57] text-white font-semibold text-sm disabled:opacity-40 active:scale-95 transition"
           >
             Next
@@ -177,11 +211,14 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
           </button>
         </div>
 
-        {/* Mini 1-18 Scrubber */}
+        {/* Mini 1-18 Scrubber (in Play Order when Shotgun Start is used) */}
         <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
-          {allResults.map((r) => {
+          {orderedResults.map((r) => {
             const isCurrent = r.holeNumber === hole.holeNumber;
-            const hasResult = r.status !== 'incomplete';
+            const hasResult =
+              r.status !== 'incomplete' ||
+              r.greeniePlayerIndices.length > 0 ||
+              r.sandiePlayerIndices.length > 0;
             return (
               <button
                 key={r.holeNumber}
@@ -196,6 +233,11 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                     ? 'bg-[#E9F5EC] text-[#1E5E3A] border border-[#2E8B57]/30'
                     : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                 }`}
+                title={
+                  startingHole !== 1
+                    ? `Hole ${r.holeNumber} (${r.playOrderNumber} of 18 played)`
+                    : `Hole ${r.holeNumber}`
+                }
               >
                 <span>{r.holeNumber}</span>
               </button>
@@ -237,7 +279,12 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
               )}
               {result.greenieBonusDollars > 0 && (
                 <span className="text-[11px] bg-lime-300 text-[#143F27] font-bold px-2 py-0.5 rounded-full font-mono">
-                  +$1 Greenie Bonus
+                  ${result.greenieBonusDollars} Greenie Trash Paid
+                </span>
+              )}
+              {result.sandieBonusDollars > 0 && (
+                <span className="text-[11px] bg-amber-300 text-[#143F27] font-bold px-2 py-0.5 rounded-full font-mono">
+                  ${result.sandieBonusDollars} Sandie Trash Paid
                 </span>
               )}
             </div>
@@ -308,8 +355,12 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
             )}
             {result.status === 'push' && (
               <span className="inline-flex items-center gap-1.5 font-bold text-[#F4E4C1]">
-                Push ({result.wolfTeamBestScore} tied {result.nonWolfTeamBestScore}) — +$1 Carries to Hole{' '}
-                {Math.min(18, hole.holeNumber + 1)}!
+                Push ({result.wolfTeamBestScore} tied {result.nonWolfTeamBestScore}) —{' '}
+                {nextHoleInOrder !== null
+                  ? `+$1 Carries to Hole ${nextHoleInOrder}!`
+                  : 'Final Hole Push'}
+                {(result.greenieBonusDollars > 0 || result.sandieBonusDollars > 0) &&
+                  ' (Trash still paid out!)'}
               </span>
             )}
           </div>
@@ -325,9 +376,9 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
       {effectiveWolfIdx !== null ? (
         <div className="flex flex-wrap items-center justify-between gap-2 bg-[#F4E4C1]/60 border border-[#DFC690] rounded-xl px-3.5 py-2.5">
           <div className="text-xs font-medium text-slate-800">
-            {hole.holeNumber >= autoWolfStartHole && result.isAutoAssignedWolf && (
+            {result.isAutoWolfHole && result.isAutoAssignedWolf && (
               <span className="inline-block mr-1.5 px-2 py-0.5 rounded bg-[#143F27] text-[#F4E4C1] font-mono text-[10px] font-bold uppercase tracking-wide">
-                Auto Low-Money Wolf (Hole {hole.holeNumber})
+                Auto Low-Money Wolf (Hole #{result.playOrderNumber} of 18)
               </span>
             )}
             <span className="font-bold text-[#143F27]">
@@ -347,7 +398,7 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                 (2 vs {packSizeTeam} — ${packSizeTeam}V pot{playerCount === 5 ? ', Wolf gets odd $' : ', even split'})
               </span>
             )}
-            {hole.holeNumber >= autoWolfStartHole && result.tiedForLowMoneyIndices.length > 1 && (
+            {result.isAutoWolfHole && result.tiedForLowMoneyIndices.length > 1 && (
               <div className="text-[11px] text-amber-900 mt-1">
                 Note: Tied for lowest money entering Hole {hole.holeNumber} (
                 {result.tiedForLowMoneyIndices
@@ -372,10 +423,10 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
           </button>
         </div>
       ) : (
-        hole.holeNumber >= autoWolfStartHole && (
+        result.isAutoWolfHole && (
           <div className="bg-[#F4E4C1]/60 border border-[#DFC690] rounded-xl px-3.5 py-2.5 text-xs text-amber-950 font-medium">
-            🐺 <strong>Hole {hole.holeNumber} Low-Money Wolf Rule:</strong> Whoever is
-            losing the most money entering Hole {hole.holeNumber} will automatically
+            🐺 <strong>Hole {hole.holeNumber} (Hole #{result.playOrderNumber} of 18) Low-Money Wolf Rule:</strong>{' '}
+            Whoever is losing the most money entering this hole will automatically
             become the Wolf as soon as prior holes are scored (or tap <strong>Wolf</strong>{' '}
             below to assign manually).
           </div>
@@ -543,8 +594,8 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                   />
                 </div>
 
-                {/* Badges & Par 3/5 Greenie Toggle */}
-                <div className="flex items-center gap-1.5">
+                {/* Badges & Par 3/5 Greenie + Any-Hole Sandie Toggles */}
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {isBirdie && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300">
                       <Sparkles className="w-3.5 h-3.5" />
@@ -561,12 +612,26 @@ export const HoleCaddieCard: React.FC<HoleCaddieCardProps> = ({
                           ? 'bg-lime-600 text-white border-lime-700 shadow-sm'
                           : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
-                      title="Greenie (Par 3 / Par 5 GIR + Par)"
+                      title="Greenie (Par 3 / Par 5 — paid individually by opposing team even on ties)"
                     >
                       <Award className="w-3.5 h-3.5" />
                       Greenie
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSandie(pIdx)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition active:scale-95 border ${
+                      pState.sandie
+                        ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                    title="Sandie (Up & down from bunker for par or better — paid individually by opposing team)"
+                  >
+                    <Award className="w-3.5 h-3.5" />
+                    Sandie
+                  </button>
 
                   {effectiveWolfIdx !== null && (
                     <span

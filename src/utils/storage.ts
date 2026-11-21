@@ -14,6 +14,7 @@ const FALLBACK_COURSES_KEY = 'shared_wolf_custom_courses_v2';
 export interface ActiveRoundState {
   courseId: string;
   playerCount?: 4 | 5;
+  startingHole?: number; // 1..18, defaults to 1 (Shotgun Start support)
   playerNames: string[]; // 5 names, defaults to ['', '', '', '', '']
   defaultBaseBet: number;
   holes: HoleState[];
@@ -24,23 +25,32 @@ export interface ActiveRoundState {
 export function createInitialHolesForCourse(
   course: CoursePreset,
   defaultBaseBet = 2,
-  playerCount: 4 | 5 = 5
+  playerCount: 4 | 5 = 5,
+  startingHole = 1
 ): HoleState[] {
-  // 5P rotates holes 1-15 (3x5) and auto-assigns 16-18; 4P rotates holes 1-16 (4x4) and auto-assigns 17-18
+  // 5P rotates first 15 holes played (3x5) and auto-assigns 16th-18th holes played;
+  // 4P rotates first 16 holes played (4x4) and auto-assigns 17th-18th holes played.
   const rotationHoles = playerCount === 4 ? 16 : 15;
-  return course.holes.map((h, idx) => ({
-    holeNumber: h.hole,
-    par: h.par,
-    handicap: h.handicap,
-    baseBet: defaultBaseBet,
-    wolfPlayerIndex: idx < rotationHoles ? idx % playerCount : null,
-    partnerPlayerIndex: null,
-    isLoneWolf: false,
-    players: Array.from({ length: 5 }, () => ({
-      score: null,
-      greenie: false,
-    })),
-  }));
+  const startIdx = Math.max(0, Math.min(17, (startingHole || 1) - 1));
+
+  return course.holes.map((h, idx) => {
+    // playStep is 0..17 representing when this hole is played during the round
+    const playStep = (idx - startIdx + 18) % 18;
+    return {
+      holeNumber: h.hole,
+      par: h.par,
+      handicap: h.handicap,
+      baseBet: defaultBaseBet,
+      wolfPlayerIndex: playStep < rotationHoles ? playStep % playerCount : null,
+      partnerPlayerIndex: null,
+      isLoneWolf: false,
+      players: Array.from({ length: 5 }, () => ({
+        score: null,
+        greenie: false,
+        sandie: false,
+      })),
+    };
+  });
 }
 
 export function loadActiveRound(): ActiveRoundState {
@@ -52,6 +62,10 @@ export function loadActiveRound(): ActiveRoundState {
         return {
           ...parsed,
           playerCount: parsed.playerCount === 4 ? 4 : 5,
+          startingHole:
+            parsed.startingHole && parsed.startingHole >= 1 && parsed.startingHole <= 18
+              ? parsed.startingHole
+              : 1,
         };
       }
     }
@@ -63,9 +77,10 @@ export function loadActiveRound(): ActiveRoundState {
   return {
     courseId: defaultCourse.id,
     playerCount: 5,
+    startingHole: 1,
     playerNames: ['', '', '', '', ''],
     defaultBaseBet: 2,
-    holes: createInitialHolesForCourse(defaultCourse, 2, 5),
+    holes: createInitialHolesForCourse(defaultCourse, 2, 5, 1),
     activeHoleNumber: 1,
     startedAtISO: new Date().toISOString(),
   };
@@ -264,10 +279,11 @@ export function computeSeasonAnalytics(rounds: SavedRound[]): {
 
   for (const round of rounds) {
     const pCount: 4 | 5 = round.playerCount === 4 ? 4 : 5;
+    const startHole = round.startingHole ?? 1;
     const names = round.playerNames
       .slice(0, pCount)
       .map((n, i) => normalizeName(n, i));
-    const holeResults = calculateRoundResults(round.holes, pCount);
+    const holeResults = calculateRoundResults(round.holes, pCount, startHole);
 
     names.forEach((name, idx) => {
       const pStat = getOrCreatePlayer(name);

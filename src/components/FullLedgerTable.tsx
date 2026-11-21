@@ -6,6 +6,7 @@ interface FullLedgerTableProps {
   holes: HoleState[];
   results: HoleCalculationResult[];
   playerCount: 4 | 5;
+  startingHole: number;
   playerNames: string[];
   activeHoleNumber: number;
   onPlayerNameChange: (index: number, name: string) => void;
@@ -17,6 +18,7 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
   holes,
   results,
   playerCount,
+  startingHole,
   playerNames,
   activeHoleNumber,
   onPlayerNameChange,
@@ -66,8 +68,11 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
               <option value={5}>P5</option>
             </select>
           </div>
-          <div className="text-[10px] font-mono text-slate-500 mt-0.5 flex items-center justify-between">
-            <span>HDCP {hole.handicap}</span>
+          <div className="text-[10px] font-mono text-slate-500 mt-0.5 flex items-center justify-between gap-1">
+            <span>
+              HDCP {hole.handicap}
+              {startingHole !== 1 ? ` • #${res.playOrderNumber}` : ''}
+            </span>
             {res.status === 'push' && (
               <span className="text-[9px] bg-[#F4E4C1] text-amber-900 font-bold px-1 rounded">
                 PUSH
@@ -253,7 +258,10 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
 
                   {/* Greenie Checkbox on Par 3 and Par 5 */}
                   {canGreenie && (
-                    <label className="inline-flex items-center gap-0.5 cursor-pointer select-none text-slate-600 hover:text-[#143F27]">
+                    <label
+                      className="inline-flex items-center gap-0.5 cursor-pointer select-none text-slate-600 hover:text-[#143F27]"
+                      title="Greenie ($1 trash paid individually by opposing team)"
+                    >
                       <input
                         type="checkbox"
                         checked={pState.greenie}
@@ -278,6 +286,35 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
                       </span>
                     </label>
                   )}
+
+                  {/* Sandie Checkbox on Any Hole */}
+                  <label
+                    className="inline-flex items-center gap-0.5 cursor-pointer select-none text-slate-600 hover:text-[#143F27]"
+                    title="Sandie ($1 trash paid individually by opposing team)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(pState.sandie)}
+                      onChange={() =>
+                        onUpdateHole(hole.holeNumber, (prev) => {
+                          const nextPlayers = [...prev.players];
+                          nextPlayers[pIdx] = {
+                            ...nextPlayers[pIdx],
+                            sandie: !nextPlayers[pIdx].sandie,
+                          };
+                          return { ...prev, players: nextPlayers };
+                        })
+                      }
+                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-600 w-3 h-3"
+                    />
+                    <span
+                      className={
+                        pState.sandie ? 'font-bold text-amber-700' : 'text-slate-500'
+                      }
+                    >
+                      S
+                    </span>
+                  </label>
                 </div>
 
                 <span className="font-mono text-[10px] text-slate-400">
@@ -293,7 +330,9 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
 
         {/* Zero-Sum Balance Check Column */}
         <td className="px-2 py-2 text-center font-mono text-xs">
-          {res.status === 'incomplete' ? (
+          {res.status === 'incomplete' &&
+          res.greeniePlayerIndices.length === 0 &&
+          res.sandiePlayerIndices.length === 0 ? (
             <span className="text-slate-400 text-[11px]">—</span>
           ) : res.isBalanced ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#E9F5EC] text-[#1E5E3A] font-bold text-[11px]">
@@ -362,7 +401,7 @@ export const FullLedgerTable: React.FC<FullLedgerTableProps> = ({
     <div className="bg-white rounded-2xl shadow-sm border border-[#2E8B57]/25 overflow-hidden">
       <div className="px-4 py-3 bg-[#E9F5EC] border-b border-[#2E8B57]/20 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-medium text-[#143F27]">
-          <span className="font-bold">Ledger Legend:</span> Tap <kbd className="px-1.5 py-0.5 bg-[#143F27] text-[#F4E4C1] rounded text-[10px] font-bold">W</kbd> for Wolf, <kbd className="px-1.5 py-0.5 bg-[#2E8B57] text-white rounded text-[10px] font-bold">P</kbd> for Partner (leave P blank for Lone Wolf 1v{playerCount - 1}). <kbd className="px-1 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">B✓</kbd> auto-triggers on Birdie (+$2 each); check <kbd className="px-1 py-0.5 bg-white border rounded text-[10px] font-bold">G</kbd> for Greenies on Par 3s & 5s.
+          <span className="font-bold">Ledger Legend:</span> Tap <kbd className="px-1.5 py-0.5 bg-[#143F27] text-[#F4E4C1] rounded text-[10px] font-bold">W</kbd> for Wolf, <kbd className="px-1.5 py-0.5 bg-[#2E8B57] text-white rounded text-[10px] font-bold">P</kbd> for Partner (leave P blank for Lone Wolf 1v{playerCount - 1}). <kbd className="px-1 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">B✓</kbd> auto-triggers on Birdie/Eagle (+$2 each when winning hole); check <kbd className="px-1 py-0.5 bg-white border rounded text-[10px] font-bold">G</kbd> for Greenies (Par 3/5) and <kbd className="px-1 py-0.5 bg-white border rounded text-[10px] font-bold">S</kbd> for Sandies (paid individually by opposing team even on ties).
         </div>
       </div>
 

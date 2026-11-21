@@ -62,6 +62,12 @@ export function App() {
   }, []);
 
   const playerCount: 4 | 5 = roundState.playerCount === 4 ? 4 : 5;
+  const startingHole: number =
+    roundState.startingHole &&
+    roundState.startingHole >= 1 &&
+    roundState.startingHole <= 18
+      ? roundState.startingHole
+      : 1;
   const activePlayerIndices = useMemo(
     () => Array.from({ length: playerCount }, (_, i) => i),
     [playerCount]
@@ -73,12 +79,15 @@ export function App() {
   }, [roundState]);
 
   const results = useMemo(
-    () => calculateRoundResults(roundState.holes, playerCount),
-    [roundState.holes, playerCount]
+    () => calculateRoundResults(roundState.holes, playerCount, startingHole),
+    [roundState.holes, playerCount, startingHole]
   );
 
-  const finalTotals =
-    results.length === 18 ? results[17].playerRunningTotals : [0, 0, 0, 0, 0];
+  const finalTotals = useMemo(() => {
+    if (results.length !== 18) return [0, 0, 0, 0, 0];
+    const lastPlayedHole = results.find((r) => r.playOrderNumber === 18);
+    return lastPlayedHole ? lastPlayedHole.playerRunningTotals : results[17].playerRunningTotals;
+  }, [results]);
 
   const isEntireRoundBalanced = useMemo(
     () => results.every((r) => r.isBalanced),
@@ -87,6 +96,7 @@ export function App() {
 
   const handlePlayerCountChange = (newCount: 4 | 5) => {
     const rotationHoles = newCount === 4 ? 16 : 15;
+    const startIdx = Math.max(0, Math.min(17, startingHole - 1));
     setRoundState((prev) => {
       const hasAnyScores = prev.holes.some((h) =>
         h.players.some((p) => p.score !== null)
@@ -95,30 +105,53 @@ export function App() {
         ...prev,
         playerCount: newCount,
         holes: prev.holes.map((h, idx) => {
-          // If no scores have been entered yet, update the default Wolf rotation (1-16 for 4P, 1-15 for 5P)
+          const playStep = (idx - startIdx + 18) % 18;
+          // If no scores have been entered yet, update the default Wolf rotation (first 16 played for 4P, first 15 played for 5P)
           if (!hasAnyScores) {
             return {
               ...h,
-              wolfPlayerIndex: idx < rotationHoles ? idx % newCount : null,
+              wolfPlayerIndex: playStep < rotationHoles ? playStep % newCount : null,
               partnerPlayerIndex:
                 h.partnerPlayerIndex !== null && h.partnerPlayerIndex >= newCount
                   ? null
                   : h.partnerPlayerIndex,
             };
           }
-          // If switching mid-round, ensure hole 16 has its rotation or auto-wolf slot set appropriately and clamp indices
+          // If switching mid-round, ensure closing holes use auto-wolf and clamp indices
           return {
             ...h,
             wolfPlayerIndex:
-              idx >= rotationHoles
+              playStep >= rotationHoles
                 ? null
                 : h.wolfPlayerIndex !== null && h.wolfPlayerIndex >= newCount
                 ? h.wolfPlayerIndex % newCount
-                : h.wolfPlayerIndex ?? idx % newCount,
+                : h.wolfPlayerIndex ?? playStep % newCount,
             partnerPlayerIndex:
               h.partnerPlayerIndex !== null && h.partnerPlayerIndex >= newCount
                 ? null
                 : h.partnerPlayerIndex,
+          };
+        }),
+      };
+    });
+  };
+
+  const handleStartingHoleChange = (newStartHole: number) => {
+    const rotationHoles = playerCount === 4 ? 16 : 15;
+    const startIdx = Math.max(0, Math.min(17, newStartHole - 1));
+    setRoundState((prev) => {
+      const hasAnyScores = prev.holes.some((h) =>
+        h.players.some((p) => p.score !== null)
+      );
+      return {
+        ...prev,
+        startingHole: newStartHole,
+        activeHoleNumber: hasAnyScores ? prev.activeHoleNumber : newStartHole,
+        holes: prev.holes.map((h, idx) => {
+          const playStep = (idx - startIdx + 18) % 18;
+          return {
+            ...h,
+            wolfPlayerIndex: playStep < rotationHoles ? playStep % playerCount : null,
           };
         }),
       };
@@ -164,16 +197,20 @@ export function App() {
   };
 
   const handleResetBoard = () => {
-    setRoundState((prev) => ({
-      ...prev,
-      holes: createInitialHolesForCourse(
-        selectedCourse,
-        prev.defaultBaseBet,
-        prev.playerCount === 4 ? 4 : 5
-      ),
-      activeHoleNumber: 1,
-      startedAtISO: new Date().toISOString(),
-    }));
+    setRoundState((prev) => {
+      const startH = prev.startingHole ?? 1;
+      return {
+        ...prev,
+        holes: createInitialHolesForCourse(
+          selectedCourse,
+          prev.defaultBaseBet,
+          prev.playerCount === 4 ? 4 : 5,
+          startH
+        ),
+        activeHoleNumber: startH,
+        startedAtISO: new Date().toISOString(),
+      };
+    });
     setShowResetConfirm(false);
   };
 
@@ -196,6 +233,7 @@ export function App() {
       courseId: selectedCourse.id,
       courseName: selectedCourse.name,
       playerCount,
+      startingHole,
       playerNames: [...roundState.playerNames],
       holes: roundState.holes,
       finalTotals: [...finalTotals],
@@ -361,6 +399,24 @@ export function App() {
                 ))}
               </div>
 
+              {/* Shotgun Start / Starting Hole Selector */}
+              <div
+                className="flex items-center bg-white/10 rounded-xl p-1 border border-white/15"
+                title="Select Starting Hole (for Shotgun Starts)"
+              >
+                <select
+                  value={startingHole}
+                  onChange={(e) => handleStartingHoleChange(Number(e.target.value))}
+                  className="bg-transparent text-white text-xs font-semibold px-2 py-1 rounded-lg focus:outline-none cursor-pointer"
+                >
+                  {Array.from({ length: 18 }, (_, i) => i + 1).map((hNum) => (
+                    <option key={hNum} value={hNum} className="text-slate-900">
+                      {hNum === 1 ? 'Start: Hole 1' : `Shotgun: Hole ${hNum}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/15">
                 <select
                   value={roundState.courseId}
@@ -506,6 +562,7 @@ export function App() {
             hole={activeHole}
             result={activeResult}
             playerCount={playerCount}
+            startingHole={startingHole}
             playerNames={roundState.playerNames}
             onPlayerNameChange={handlePlayerNameChange}
             onSelectHole={(hNum) =>
@@ -523,6 +580,7 @@ export function App() {
             holes={roundState.holes}
             results={results}
             playerCount={playerCount}
+            startingHole={startingHole}
             playerNames={roundState.playerNames}
             activeHoleNumber={roundState.activeHoleNumber}
             onPlayerNameChange={handlePlayerNameChange}
@@ -686,18 +744,28 @@ export function App() {
               </div>
               <div className="p-3 rounded-xl bg-[#E9F5EC] border border-[#2E8B57]/20">
                 <strong className="text-[#143F27] block mb-1">
-                  2. Effective Hole Value ($V)
+                  2. Effective Hole Value ($V) & Birdies
                 </strong>
                 Starts at <strong>$2 Base Bet</strong> (editable or doublable via{' '}
                 <code>2× Press</code>) + <strong>+$1 per consecutive tied hole</strong>{' '}
-                (Carry-over) + <strong>+$2 per Birdie on the winning team</strong> (e.g., 2
-                birdies on the winning team adds +$4; if both teams make birdie, the hole is a
-                Push) + <strong>+$1 Greenie Bonus</strong> (on Par 3s & Par 5s when checked for
-                the winning side).
+                (Carry-over) + <strong>+$2 per Birdie (or Eagle) on the winning team</strong>.
+                You only get paid for a Birdie/Eagle if your team wins the hole (if both
+                teams tie with a Birdie, it is a Push and birdies do not carry over).
+              </div>
+              <div className="p-3 rounded-xl bg-[#E9F5EC] border border-[#2E8B57]/20">
+                <strong className="text-[#143F27] block mb-1">
+                  3. Individual Trash — Greenies & Sandies ($1 Value)
+                </strong>
+                <strong>Greenies</strong> (Par 3s & Par 5s) and <strong>Sandies</strong>{' '}
+                (any hole) pay out <strong>individually</strong> to the player who earned
+                them, paid by the players on the opposing team — <em>even if the overall
+                hole is tied or lost</em>! In 5-Player 2v3 ($3 Trash Pot), the 3 Pack
+                players pay $1 each when a Wolf-team player earns it; when a Pack player
+                earns it, the Wolf pays $2 and the Partner pays $1.
               </div>
               <div className="p-3 rounded-xl bg-[#F4E4C1]/60 border border-[#DFC690]">
                 <strong className="text-[#143F27] block mb-1">
-                  3. Team Wolf Payouts (2 vs 3 in 5P • 2 vs 2 in 4P)
+                  4. Team Wolf Payouts (2 vs 3 in 5P • 2 vs 2 in 4P)
                 </strong>
                 <strong>In 5-Player (2 vs 3):</strong> The 3 Pack players always win or
                 lose <strong>$V each</strong> (Total Pot = <strong>$3V</strong>). The 2
@@ -715,11 +783,13 @@ export function App() {
               </div>
               <div className="p-3 rounded-xl bg-[#E9F5EC] border border-[#2E8B57]/20">
                 <strong className="text-[#143F27] block mb-1">
-                  4. Lone Wolf Payouts (1 vs 4 in 5P • 1 vs 3 in 4P)
+                  5. Lone Wolf & Shotgun Start Closing Holes
                 </strong>
-                When the Wolf goes solo against the Pack, each Pack member wins or loses{' '}
-                <strong>$V</strong> (Pot = <strong>$4V</strong> in 5-Player, or{' '}
-                <strong>$3V</strong> in 4-Player). Lone Wolf wins or pays the entire pot.
+                When the Wolf goes solo, each Pack member wins or loses <strong>$V</strong>{' '}
+                (Pot = <strong>$4V</strong> in 5P, <strong>$3V</strong> in 4P). On the
+                closing holes of the day's rotation (the 16th–18th holes played in 5P, or
+                17th–18th holes played in 4P, automatically adjusted for Shotgun Starts),
+                whoever is losing the most money automatically becomes the Wolf!
               </div>
             </div>
           </div>
