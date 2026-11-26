@@ -2,6 +2,7 @@
 export default {
   content: [
     "./index.html",
+    "./gps-entry.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
