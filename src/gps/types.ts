@@ -111,3 +111,97 @@ export interface LayupMeasurement {
 export type GpsMode = 'live' | 'preview';
 export type MapOrientation = 'tee-up' | 'north-up';
 export type MapStyle = 'digital' | 'esri' | 'usgs';
+
+export type FairwayResult = 'left' | 'hit' | 'right';
+
+export interface HoleScoreEntry {
+  holeNumber: number;
+  gross: number | null;
+  putts: number | null;
+  fairway: FairwayResult | null;
+  gir: boolean | null;
+  girManual?: boolean;
+  sand: boolean;
+  penalties: number;
+}
+
+export interface ActiveGpsRound {
+  id: string;
+  courseId: string;
+  startedAt: string;
+  tee: TeeName;
+  holes: Record<number, HoleScoreEntry>;
+}
+
+export interface SavedGpsRound extends ActiveGpsRound {
+  completedAt: string;
+  handicapIndex: number | null;
+  courseHandicap: number | null;
+  grossTotal: number;
+  adjustedGrossTotal: number;
+  netTotal: number | null;
+  toPar: number;
+  holesPlayed: number;
+  differential: number | null;
+  puttsTotal: number | null;
+  firHit: number;
+  firTracked: number;
+  girHit: number;
+  girTracked: number;
+}
+
+export interface HoleComputedSummary {
+  holeNumber: number;
+  par: number;
+  handicap: number;
+  yardage: number;
+  entry: HoleScoreEntry;
+  strokes: number | null;
+  ndbMax: number;
+  adjustedGross: number | null;
+  ndbCapped: boolean;
+  net: number | null;
+  toPar: number | null;
+  girEffective: boolean | null;
+}
+
+export interface NineSummary {
+  holesPlayed: number;
+  parTotal: number;
+  parForPlayed: number;
+  grossTotal: number;
+  adjustedGrossTotal: number;
+  netTotal: number | null;
+  puttsTotal: number | null;
+}
+
+export interface RoundComputedSummary {
+  teeMeta: TeeMeta;
+  hasHandicap: boolean;
+  courseHandicap: number | null;
+  holes: HoleComputedSummary[];
+  frontNine: NineSummary;
+  backNine: NineSummary;
+  holesPlayed: number;
+  grossTotal: number;
+  parForPlayed: number;
+  toPar: number;
+  adjustedGrossTotal: number;
+  netTotal: number | null;
+  ndbCappedHoles: HoleComputedSummary[];
+  differential: number | null;
+  isNineHoleComplete: boolean;
+  puttsTotal: number | null;
+  puttsHoles: number;
+  firHit: number;
+  firTracked: number;
+  girHit: number;
+  girTracked: number;
+  sandCount: number;
+  penaltiesTotal: number;
+  eagles: number;
+  birdies: number;
+  pars: number;
+  bogeys: number;
+  doublesPlus: number;
+}

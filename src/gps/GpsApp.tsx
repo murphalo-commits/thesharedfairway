@@ -10,9 +10,12 @@ import {
 } from 'lucide-react';
 import { NORBECK_COURSE } from './data/norbeckCourse';
 import {
+  ActiveGpsRound,
+  HoleScoreEntry,
   LatLng,
   MapOrientation,
   MapStyle,
+  SavedGpsRound,
   TeeName,
 } from './types';
 import {
@@ -22,6 +25,22 @@ import {
   detectNearestHole,
   distanceYards,
 } from './utils/geo';
+import {
+  buildSavedRoundRecord,
+  computeRoundSummary,
+  createEmptyHoleEntry,
+  createEmptyRound,
+  formatToPar,
+} from './utils/scorecard';
+import {
+  deleteRoundFromHistory,
+  loadActiveRound,
+  loadHandicapIndex,
+  loadRoundHistory,
+  saveActiveRound,
+  saveHandicapIndex,
+  saveRoundToHistory,
+} from './utils/gpsStorage';
 import { useGolfGps } from './hooks/useGolfGps';
 import {
   CameraCommand,
@@ -30,6 +49,11 @@ import {
 import { HoleSelectorBar } from './components/HoleSelectorBar';
 import { YardageHud } from './components/YardageHud';
 import { HazardDrawer } from './components/HazardDrawer';
+import { ScoreEntrySheet } from './components/ScoreEntrySheet';
+import {
+  ScorecardModal,
+  ScorecardModalTab,
+} from './components/ScorecardModal';
 
 const PREFS_STORAGE_KEY = 'tsf_norbeck_gps_prefs_v1';
 
@@ -85,6 +109,19 @@ function loadPrefs(): StoredGpsPrefs {
 
 export function GpsApp() {
   const [prefs, setPrefs] = useState<StoredGpsPrefs>(() => loadPrefs());
+  const [activeRound, setActiveRound] = useState<ActiveGpsRound>(() =>
+    loadActiveRound(prefs.selectedTee)
+  );
+  const [handicapIndex, setHandicapIndex] = useState<number | null>(() =>
+    loadHandicapIndex()
+  );
+  const [roundHistory, setRoundHistory] = useState<SavedGpsRound[]>(() =>
+    loadRoundHistory()
+  );
+  const [showScoreSheet, setShowScoreSheet] = useState(false);
+  const [scorecardModalTab, setScorecardModalTab] =
+    useState<ScorecardModalTab | null>(null);
+
   const activeHole = useMemo(
     () =>
       NORBECK_COURSE.holes.find((h) => h.holeNumber === prefs.holeNumber) ||
@@ -113,6 +150,15 @@ export function GpsApp() {
     }
   }, [prefs]);
 
+  // Persist active round & handicap index
+  useEffect(() => {
+    saveActiveRound(activeRound);
+  }, [activeRound]);
+
+  useEffect(() => {
+    saveHandicapIndex(handicapIndex);
+  }, [handicapIndex]);
+
   const handleSelectHole = useCallback((holeNumber: number) => {
     const nextHole =
       NORBECK_COURSE.holes.find((h) => h.holeNumber === holeNumber) ||
@@ -121,6 +167,11 @@ export function GpsApp() {
     setTargetPosition(nextHole.defaultTarget);
     setSelectedHazardId(null);
     setDismissedAutoHole(null);
+  }, []);
+
+  const handleSelectTee = useCallback((selectedTee: TeeName) => {
+    setPrefs((prev) => ({ ...prev, selectedTee }));
+    setActiveRound((prev) => ({ ...prev, tee: selectedTee }));
   }, []);
 
   const greenDistances = useMemo(
@@ -154,6 +205,73 @@ export function GpsApp() {
     if (gps.gpsMode !== 'live' || !gps.rawPosition) return null;
     return detectNearestHole(gps.rawPosition, NORBECK_COURSE);
   }, [gps.gpsMode, gps.rawPosition]);
+
+  const roundSummary = useMemo(
+    () => computeRoundSummary(activeRound, NORBECK_COURSE, handicapIndex),
+    [activeRound, handicapIndex]
+  );
+
+  const activeHoleSummary = roundSummary.holes[activeHole.holeNumber - 1];
+  const activeHoleEntry =
+    activeRound.holes[activeHole.holeNumber] ||
+    createEmptyHoleEntry(activeHole.holeNumber);
+
+  const handleUpdateActiveHoleEntry = useCallback(
+    (updater: (prev: HoleScoreEntry) => HoleScoreEntry) => {
+      setActiveRound((prev) => {
+        const current =
+          prev.holes[activeHole.holeNumber] ||
+          createEmptyHoleEntry(activeHole.holeNumber);
+        return {
+          ...prev,
+          holes: {
+            ...prev.holes,
+            [activeHole.holeNumber]: updater(current),
+          },
+        };
+      });
+    },
+    [activeHole.holeNumber]
+  );
+
+  const handleClearActiveHole = useCallback(() => {
+    setActiveRound((prev) => ({
+      ...prev,
+      holes: {
+        ...prev.holes,
+        [activeHole.holeNumber]: createEmptyHoleEntry(activeHole.holeNumber),
+      },
+    }));
+  }, [activeHole.holeNumber]);
+
+  const handleNextOrFinish = useCallback(() => {
+    setShowScoreSheet(false);
+    if (activeHole.holeNumber < 18) {
+      handleSelectHole(activeHole.holeNumber + 1);
+    } else {
+      setScorecardModalTab('ghin');
+    }
+  }, [activeHole.holeNumber, handleSelectHole]);
+
+  const handleSaveRound = useCallback(() => {
+    if (roundSummary.holesPlayed === 0) return;
+    const record = buildSavedRoundRecord(
+      activeRound,
+      roundSummary,
+      handicapIndex
+    );
+    setRoundHistory(saveRoundToHistory(record));
+  }, [activeRound, roundSummary, handicapIndex]);
+
+  const handleResetRound = useCallback(() => {
+    setActiveRound(createEmptyRound('norbeck-cc', prefs.selectedTee));
+    setScorecardModalTab(null);
+    handleSelectHole(1);
+  }, [prefs.selectedTee, handleSelectHole]);
+
+  const handleDeleteHistoryRound = useCallback((id: string) => {
+    setRoundHistory(deleteRoundFromHistory(id));
+  }, []);
 
   const showPreviewTeeReset =
     gps.gpsMode === 'preview' &&
@@ -206,9 +324,7 @@ export function GpsApp() {
         detectedHole={detectedHole}
         dismissedAutoHole={dismissedAutoHole}
         onSelectHole={handleSelectHole}
-        onSelectTee={(selectedTee) =>
-          setPrefs((prev) => ({ ...prev, selectedTee }))
-        }
+        onSelectTee={handleSelectTee}
         onSelectMapStyle={(mapStyle) =>
           setPrefs((prev) => ({ ...prev, mapStyle }))
         }
@@ -342,14 +458,61 @@ export function GpsApp() {
         )}
       </div>
 
-      {/* Bottom Interactive Hazard Drawer */}
+      {/* Bottom Interactive Hazard & Score Drawer */}
       <HazardDrawer
         holeNumber={activeHole.holeNumber}
         hazards={hazardDistances}
         selectedHazardId={selectedHazardId}
-        gpsMode={gps.gpsMode}
+        currentHoleScore={activeHoleEntry.gross}
+        currentHolePar={activeHole.par}
+        runningToPar={
+          roundSummary.holesPlayed > 0 ? formatToPar(roundSummary.toPar) : null
+        }
+        holesPlayed={roundSummary.holesPlayed}
         onSelectHazard={setSelectedHazardId}
-        onResetPreviewToTee={() => gps.resetPreviewToTee(activeHole)}
+        onOpenScoreEntry={() => setShowScoreSheet(true)}
+        onOpenScorecard={() => setScorecardModalTab('scorecard')}
+      />
+
+      {/* Slide-up Quick Hole Score Entry Sheet */}
+      <ScoreEntrySheet
+        isOpen={showScoreSheet}
+        hole={activeHole}
+        entry={activeHoleEntry}
+        strokesReceived={activeHoleSummary?.strokes ?? null}
+        ndbMax={activeHoleSummary?.ndbMax ?? activeHole.par + 5}
+        hasHandicap={roundSummary.hasHandicap}
+        runningToPar={roundSummary.toPar}
+        holesPlayed={roundSummary.holesPlayed}
+        onUpdateEntry={handleUpdateActiveHoleEntry}
+        onClearHole={handleClearActiveHole}
+        onOpenScorecard={() => {
+          setShowScoreSheet(false);
+          setScorecardModalTab('scorecard');
+        }}
+        onNextOrFinish={handleNextOrFinish}
+        onClose={() => setShowScoreSheet(false)}
+      />
+
+      {/* 3-Tab Scorecard, GHIN Summary & Round History Modal */}
+      <ScorecardModal
+        isOpen={scorecardModalTab !== null}
+        initialTab={scorecardModalTab || 'scorecard'}
+        course={NORBECK_COURSE}
+        activeRound={activeRound}
+        summary={roundSummary}
+        handicapIndex={handicapIndex}
+        roundHistory={roundHistory}
+        onChangeHandicapIndex={setHandicapIndex}
+        onJumpToHoleScore={(holeNum) => {
+          setScorecardModalTab(null);
+          handleSelectHole(holeNum);
+          setShowScoreSheet(true);
+        }}
+        onSaveRound={handleSaveRound}
+        onResetRound={handleResetRound}
+        onDeleteHistoryRound={handleDeleteHistoryRound}
+        onClose={() => setScorecardModalTab(null)}
       />
     </main>
   );

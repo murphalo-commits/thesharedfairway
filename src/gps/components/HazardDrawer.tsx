@@ -1,28 +1,46 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Droplets, MapPin, Waves } from 'lucide-react';
-import { GpsMode, HazardDistanceResult } from '../types';
+import {
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Droplets,
+  Plus,
+  Waves,
+} from 'lucide-react';
+import { HazardDistanceResult } from '../types';
 
 interface HazardDrawerProps {
   holeNumber: number;
   hazards: HazardDistanceResult[];
   selectedHazardId: string | null;
-  gpsMode: GpsMode;
+  currentHoleScore: number | null;
+  currentHolePar: number;
+  runningToPar: string | null;
+  holesPlayed: number;
   onSelectHazard: (id: string | null) => void;
-  onResetPreviewToTee: () => void;
+  onOpenScoreEntry: () => void;
+  onOpenScorecard: () => void;
 }
 
 export const HazardDrawer: React.FC<HazardDrawerProps> = ({
   holeNumber,
   hazards,
   selectedHazardId,
-  gpsMode,
+  currentHoleScore,
+  currentHolePar,
+  runningToPar,
+  holesPlayed,
   onSelectHazard,
-  onResetPreviewToTee,
+  onOpenScoreEntry,
+  onOpenScorecard,
 }) => {
   const [expanded, setExpanded] = useState(true);
 
   const aheadCount = hazards.filter((h) => h.isAhead).length;
   const passedCount = hazards.filter((h) => h.isPassed).length;
+
+  const isUnderPar =
+    currentHoleScore !== null && currentHoleScore < currentHolePar;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-20 px-3 pb-[max(0.65rem,env(safe-area-inset-bottom))] pointer-events-none">
@@ -32,7 +50,7 @@ export const HazardDrawer: React.FC<HazardDrawerProps> = ({
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#143F27]/92 backdrop-blur-md border border-white/15 text-white text-xs font-semibold shadow-lg"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#143F27]/92 backdrop-blur-md border border-white/15 text-white text-xs font-semibold shadow-lg shrink-0"
           >
             <span>
               Hazards:{' '}
@@ -49,17 +67,45 @@ export const HazardDrawer: React.FC<HazardDrawerProps> = ({
             )}
           </button>
 
-          {gpsMode === 'preview' && (
+          {/* Score + Scorecard Pill Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={onResetPreviewToTee}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#143F27]/90 backdrop-blur-md border border-[#F4E4C1]/35 text-[#F4E4C1] text-[11px] font-semibold shadow-lg hover:bg-[#1E5E3A]"
-              title="Move preview golfer back to tee"
+              onClick={onOpenScoreEntry}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full backdrop-blur-md border text-xs font-bold shadow-lg transition-colors ${
+                currentHoleScore !== null
+                  ? isUnderPar
+                    ? 'bg-[#D4AF37]/25 border-[#D4AF37] text-[#F4E4C1]'
+                    : 'bg-[#2E8B57]/90 border-emerald-300/60 text-white'
+                  : 'bg-[#143F27]/92 border-[#D4AF37]/60 text-[#F4E4C1] hover:bg-[#1E5E3A]'
+              }`}
+              aria-label={`Enter score for Hole ${holeNumber}`}
             >
-              <MapPin className="w-3 h-3" />
-              <span>Preview · Tee Reset</span>
+              {currentHoleScore !== null ? (
+                <span className="font-mono">
+                  Score: {currentHoleScore}
+                  {runningToPar ? ` · ${runningToPar}` : ''}
+                </span>
+              ) : (
+                <>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="font-mono">
+                    Score{holesPlayed > 0 && runningToPar ? ` · ${runningToPar}` : ''}
+                  </span>
+                </>
+              )}
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={onOpenScorecard}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#143F27]/92 backdrop-blur-md border border-white/20 text-white hover:bg-[#1E5E3A] text-xs font-bold shadow-lg transition-colors"
+              aria-label="Open full scorecard"
+            >
+              <ClipboardList className="w-3.5 h-3.5 text-[#F4E4C1]" />
+              <span>Card</span>
+            </button>
+          </div>
         </div>
 
         {/* Horizontal Hazard Cards */}
