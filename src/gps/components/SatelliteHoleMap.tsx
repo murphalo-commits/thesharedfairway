@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import {
+  CourseMapVectors,
   GpsMode,
   GreenDistances,
   HazardDistanceResult,
@@ -8,7 +9,7 @@ import {
   LatLng,
   LayupMeasurement,
   MapOrientation,
-  SatelliteSource,
+  MapStyle,
 } from '../types';
 import {
   bearingDegrees,
@@ -24,6 +25,7 @@ export interface CameraCommand {
 
 interface SatelliteHoleMapProps {
   hole: HoleGpsData;
+  courseVectors: CourseMapVectors;
   playerPosition: LatLng;
   gpsMode: GpsMode;
   accuracyYards: number | null;
@@ -32,13 +34,46 @@ interface SatelliteHoleMapProps {
   layupMeasurement: LayupMeasurement | null;
   selectedHazard: HazardDistanceResult | null;
   orientation: MapOrientation;
-  satelliteSource: SatelliteSource;
+  mapStyle: MapStyle;
   showArcs: boolean;
   cameraCommand: CameraCommand;
   onTargetChange: (pos: LatLng) => void;
   onPreviewPlayerChange: (pos: LatLng) => void;
   onSelectHazard: (hazardId: string | null) => void;
 }
+
+const DIGITAL_LAYER_IDS = [
+  'digital-bg',
+  'digital-roads',
+  'digital-boundary-fill',
+  'digital-boundary-line',
+  'digital-woods-fill',
+  'digital-woods-line',
+  'digital-range-fill',
+  'digital-range-line',
+  'digital-fairways-other',
+  'digital-fairways-other-line',
+  'digital-fairways-active',
+  'digital-fairways-active-line',
+  'digital-streams-casing',
+  'digital-streams-fill',
+  'digital-waters-fill',
+  'digital-waters-line',
+  'digital-cartpaths-casing',
+  'digital-cartpaths-fill',
+  'digital-tees-fill',
+  'digital-tees-line',
+  'digital-bunkers-shadow',
+  'digital-bunkers-fill',
+  'digital-greens-other-collar',
+  'digital-greens-other-fill',
+  'digital-greens-other-rim',
+  'digital-clubhouse-fill',
+  'digital-clubhouse-line',
+  'digital-pools-fill',
+  'digital-pools-line',
+  'green-collar',
+] as const;
 
 function toLngLat(pt: LatLng): [number, number] {
   return [pt.lng, pt.lat];
@@ -57,6 +92,202 @@ function toClosedRing(pts: LatLng[]): [number, number][] {
 
 function emptyFc(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
+}
+
+function buildCourseVectorsFc(vectors: CourseMapVectors): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+
+  for (const road of vectors.roads) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'road' },
+      geometry: { type: 'LineString', coordinates: road.map(toLngLat) },
+    });
+  }
+
+  if (vectors.boundary.length >= 3) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'boundary' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(vectors.boundary)] },
+    });
+  }
+
+  for (const wood of vectors.woods) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'wood' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(wood)] },
+    });
+  }
+
+  if (vectors.drivingRange && vectors.drivingRange.length >= 3) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'driving-range' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(vectors.drivingRange)] },
+    });
+  }
+
+  for (const fw of vectors.fairways) {
+    features.push({
+      type: 'Feature',
+      properties: {
+        featureType: 'fairway',
+        holeNumber: fw.holeNumber ?? -1,
+      },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(fw.points)] },
+    });
+  }
+
+  for (const stream of vectors.streams) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'stream' },
+      geometry: { type: 'LineString', coordinates: stream.map(toLngLat) },
+    });
+  }
+
+  for (const water of vectors.waters) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'water' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(water)] },
+    });
+  }
+
+  for (const path of vectors.cartpaths) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'cartpath' },
+      geometry: { type: 'LineString', coordinates: path.map(toLngLat) },
+    });
+  }
+
+  for (const tee of vectors.tees) {
+    features.push({
+      type: 'Feature',
+      properties: {
+        featureType: 'tee',
+        holeNumber: tee.holeNumber ?? -1,
+      },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(tee.points)] },
+    });
+  }
+
+  for (const bunker of vectors.bunkers) {
+    features.push({
+      type: 'Feature',
+      properties: {
+        featureType: 'bunker',
+        holeNumber: bunker.holeNumber ?? -1,
+      },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(bunker.points)] },
+    });
+  }
+
+  for (const grn of vectors.greens) {
+    features.push({
+      type: 'Feature',
+      properties: {
+        featureType: 'green',
+        holeNumber: grn.holeNumber ?? -1,
+      },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(grn.points)] },
+    });
+  }
+
+  if (vectors.clubhouse && vectors.clubhouse.length >= 3) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'clubhouse' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(vectors.clubhouse)] },
+    });
+  }
+
+  for (const pool of vectors.pools) {
+    features.push({
+      type: 'Feature',
+      properties: { featureType: 'pool' },
+      geometry: { type: 'Polygon', coordinates: [toClosedRing(pool)] },
+    });
+  }
+
+  return { type: 'FeatureCollection', features };
+}
+
+function createStripePattern(
+  size: number,
+  colorA: [number, number, number],
+  colorB: [number, number, number]
+): { width: number; height: number; data: Uint8Array } {
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const useA = (x + y) % 16 < 8;
+      const [r, g, b] = useA ? colorA : colorB;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  return { width: size, height: size, data };
+}
+
+function createWoodsPattern(): { width: number; height: number; data: Uint8Array } {
+  const size = 48;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return createStripePattern(size, [22, 63, 38], [26, 74, 45]);
+  }
+  ctx.fillStyle = '#163F26';
+  ctx.fillRect(0, 0, size, size);
+
+  const circles: [number, number, number, string][] = [
+    [10, 12, 8, '#1D4E30'],
+    [32, 10, 9, '#12341F'],
+    [22, 26, 10, '#235A38'],
+    [40, 32, 8, '#1D4E30'],
+    [8, 38, 7, '#12341F'],
+    [26, 44, 7, '#1D4E30'],
+  ];
+
+  for (const [cx, cy, r, fill] of circles) {
+    ctx.fillStyle = fill;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        ctx.beginPath();
+        ctx.arc(cx + dx * size, cy + dy * size, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const imgData = ctx.getImageData(0, 0, size, size);
+  return { width: size, height: size, data: new Uint8Array(imgData.data) };
+}
+
+function registerDigitalPatterns(map: maplibregl.Map) {
+  if (!map.hasImage('fairway-stripes-active')) {
+    map.addImage(
+      'fairway-stripes-active',
+      createStripePattern(32, [78, 182, 92], [69, 168, 83])
+    );
+  }
+  if (!map.hasImage('fairway-stripes-dim')) {
+    map.addImage(
+      'fairway-stripes-dim',
+      createStripePattern(32, [62, 150, 76], [55, 138, 69])
+    );
+  }
+  if (!map.hasImage('woods-canopy')) {
+    map.addImage('woods-canopy', createWoodsPattern());
+  }
 }
 
 function createTargetElement(): HTMLDivElement {
@@ -121,6 +352,7 @@ function createPillElement(variant: 'leg1' | 'leg2' | 'arc' | 'hazard'): HTMLDiv
 
 export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
   hole,
+  courseVectors,
   playerPosition,
   gpsMode,
   accuracyYards,
@@ -129,7 +361,7 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
   layupMeasurement,
   selectedHazard,
   orientation,
-  satelliteSource,
+  mapStyle,
   showArcs,
   cameraCommand,
   onTargetChange,
@@ -172,6 +404,11 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
     const holeYards = distanceYards(hole.tee, hole.green.center);
     return buildDistanceArcsGeoJson(hole.green.center, hole.tee, holeYards);
   }, [hole.tee, hole.green.center, showArcs]);
+
+  const courseVectorsFc = useMemo(
+    () => buildCourseVectorsFc(courseVectors),
+    [courseVectors]
+  );
 
   // Helper to fit camera to the active hole
   const fitHoleCamera = (
@@ -240,6 +477,7 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const initialDigital = mapStyle === 'digital';
     const map = new maplibregl.Map({
       container: containerRef.current,
       attributionControl: false,
@@ -272,11 +510,17 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         },
         layers: [
           {
+            id: 'digital-bg',
+            type: 'background',
+            paint: { 'background-color': '#133420' },
+            layout: { visibility: initialDigital ? 'visible' : 'none' },
+          },
+          {
             id: 'esri-layer',
             type: 'raster',
             source: 'esri-imagery',
             layout: {
-              visibility: satelliteSource === 'esri' ? 'visible' : 'none',
+              visibility: mapStyle === 'esri' ? 'visible' : 'none',
             },
           },
           {
@@ -284,7 +528,7 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
             type: 'raster',
             source: 'usgs-imagery',
             layout: {
-              visibility: satelliteSource === 'usgs' ? 'visible' : 'none',
+              visibility: mapStyle === 'usgs' ? 'visible' : 'none',
             },
           },
         ],
@@ -365,6 +609,14 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
     );
 
     map.on('load', () => {
+      registerDigitalPatterns(map);
+
+      map.addSource('course-vectors', {
+        type: 'geojson',
+        data: courseVectorsFc,
+        attribution: '© OpenStreetMap contributors',
+      });
+
       const empty = emptyFc();
       const sourceIds = [
         'accuracy-circle',
@@ -380,6 +632,263 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         map.addSource(id, { type: 'geojson', data: empty });
       }
 
+      const digVis = mapStyle === 'digital' ? 'visible' : 'none';
+      const activeFairwayFilter: maplibregl.FilterSpecification = [
+        'all',
+        ['==', ['get', 'featureType'], 'fairway'],
+        ['==', ['get', 'holeNumber'], hole.holeNumber],
+      ];
+      const otherFairwayFilter: maplibregl.FilterSpecification = [
+        'all',
+        ['==', ['get', 'featureType'], 'fairway'],
+        ['!=', ['get', 'holeNumber'], hole.holeNumber],
+      ];
+      const otherGreenFilter: maplibregl.FilterSpecification = [
+        'all',
+        ['==', ['get', 'featureType'], 'green'],
+        ['!=', ['get', 'holeNumber'], hole.holeNumber],
+      ];
+
+      // Digital Course View Layers (bottom -> top)
+      map.addLayer({
+        id: 'digital-roads',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'road'],
+        layout: { visibility: digVis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#234733', 'line-width': 4.5, 'line-opacity': 0.7 },
+      });
+
+      map.addLayer({
+        id: 'digital-boundary-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'boundary'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#2C6B3D' },
+      });
+      map.addLayer({
+        id: 'digital-boundary-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'boundary'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#1E502C', 'line-width': 2 },
+      });
+
+      map.addLayer({
+        id: 'digital-woods-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'wood'],
+        layout: { visibility: digVis },
+        paint: { 'fill-pattern': 'woods-canopy' },
+      });
+      map.addLayer({
+        id: 'digital-woods-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'wood'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#0E2B1A', 'line-width': 1.5, 'line-opacity': 0.75 },
+      });
+
+      map.addLayer({
+        id: 'digital-range-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'driving-range'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#3B8E48' },
+      });
+      map.addLayer({
+        id: 'digital-range-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'driving-range'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#67C572', 'line-width': 1.2, 'line-opacity': 0.5 },
+      });
+
+      map.addLayer({
+        id: 'digital-fairways-other',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: otherFairwayFilter,
+        layout: { visibility: digVis },
+        paint: { 'fill-pattern': 'fairway-stripes-dim' },
+      });
+      map.addLayer({
+        id: 'digital-fairways-other-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: otherFairwayFilter,
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#52B360', 'line-width': 1, 'line-opacity': 0.55 },
+      });
+
+      map.addLayer({
+        id: 'digital-fairways-active',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: activeFairwayFilter,
+        layout: { visibility: digVis },
+        paint: { 'fill-pattern': 'fairway-stripes-active' },
+      });
+      map.addLayer({
+        id: 'digital-fairways-active-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: activeFairwayFilter,
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#86EFAC', 'line-width': 1.6, 'line-opacity': 0.75 },
+      });
+
+      map.addLayer({
+        id: 'digital-streams-casing',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'stream'],
+        layout: { visibility: digVis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#175987', 'line-width': 4.5 },
+      });
+      map.addLayer({
+        id: 'digital-streams-fill',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'stream'],
+        layout: { visibility: digVis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#38BDF8', 'line-width': 2.2 },
+      });
+
+      map.addLayer({
+        id: 'digital-waters-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'water'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#1B7AC2' },
+      });
+      map.addLayer({
+        id: 'digital-waters-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'water'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#7DD3FC', 'line-width': 1.6 },
+      });
+
+      map.addLayer({
+        id: 'digital-cartpaths-casing',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'cartpath'],
+        layout: { visibility: digVis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#1A452A', 'line-width': 3.2, 'line-opacity': 0.6 },
+      });
+      map.addLayer({
+        id: 'digital-cartpaths-fill',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'cartpath'],
+        layout: { visibility: digVis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#DDD8C8', 'line-width': 1.6, 'line-opacity': 0.75 },
+      });
+
+      map.addLayer({
+        id: 'digital-tees-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'tee'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#5AC467' },
+      });
+      map.addLayer({
+        id: 'digital-tees-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'tee'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#A7F3D0', 'line-width': 1.2, 'line-opacity': 0.7 },
+      });
+
+      map.addLayer({
+        id: 'digital-bunkers-shadow',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'bunker'],
+        layout: { visibility: digVis, 'line-join': 'round' },
+        paint: { 'line-color': '#A98B55', 'line-width': 2.8 },
+      });
+      map.addLayer({
+        id: 'digital-bunkers-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'bunker'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#F5E7C6' },
+      });
+
+      map.addLayer({
+        id: 'digital-greens-other-collar',
+        type: 'line',
+        source: 'course-vectors',
+        filter: otherGreenFilter,
+        layout: { visibility: digVis, 'line-join': 'round' },
+        paint: { 'line-color': '#236B3D', 'line-width': 3.4 },
+      });
+      map.addLayer({
+        id: 'digital-greens-other-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: otherGreenFilter,
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#53C062' },
+      });
+      map.addLayer({
+        id: 'digital-greens-other-rim',
+        type: 'line',
+        source: 'course-vectors',
+        filter: otherGreenFilter,
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#86EFAC', 'line-width': 1 },
+      });
+
+      map.addLayer({
+        id: 'digital-clubhouse-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'clubhouse'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#CBD5E1' },
+      });
+      map.addLayer({
+        id: 'digital-clubhouse-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'clubhouse'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#475569', 'line-width': 1.5 },
+      });
+
+      map.addLayer({
+        id: 'digital-pools-fill',
+        type: 'fill',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'pool'],
+        layout: { visibility: digVis },
+        paint: { 'fill-color': '#38BDF8' },
+      });
+      map.addLayer({
+        id: 'digital-pools-line',
+        type: 'line',
+        source: 'course-vectors',
+        filter: ['==', ['get', 'featureType'], 'pool'],
+        layout: { visibility: digVis },
+        paint: { 'line-color': '#E2E8F0', 'line-width': 1.5 },
+      });
+
+      // Active-hole interactive overlay layers (all modes)
       map.addLayer({
         id: 'accuracy-fill',
         type: 'fill',
@@ -415,8 +924,8 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         source: 'hole-tees',
         paint: {
           'line-color': '#E9F5EC',
-          'line-opacity': 0.5,
-          'line-width': 1.2,
+          'line-opacity': 0.55,
+          'line-width': 1.3,
         },
       });
 
@@ -440,7 +949,12 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         filter: ['==', ['get', 'hazardType'], 'water'],
         paint: {
           'fill-color': '#38BDF8',
-          'fill-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.38, 0.22],
+          'fill-opacity': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            0.38,
+            mapStyle === 'digital' ? 0.08 : 0.22,
+          ],
         },
       });
       map.addLayer({
@@ -449,8 +963,18 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         source: 'hole-hazards',
         filter: ['==', ['get', 'hazardType'], 'water'],
         paint: {
-          'line-color': ['case', ['boolean', ['get', 'selected'], false], '#BAE6FD', '#38BDF8'],
-          'line-width': ['case', ['boolean', ['get', 'selected'], false], 3, 1.8],
+          'line-color': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            '#BAE6FD',
+            '#38BDF8',
+          ],
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            3,
+            mapStyle === 'digital' ? 1.2 : 1.8,
+          ],
         },
       });
 
@@ -461,7 +985,12 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         filter: ['in', ['get', 'hazardType'], ['literal', ['fairway-bunker', 'greenside-bunker']]],
         paint: {
           'fill-color': '#F4E4C1',
-          'fill-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.42, 0.22],
+          'fill-opacity': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            0.42,
+            mapStyle === 'digital' ? 0.08 : 0.22,
+          ],
         },
       });
       map.addLayer({
@@ -470,8 +999,18 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         source: 'hole-hazards',
         filter: ['in', ['get', 'hazardType'], ['literal', ['fairway-bunker', 'greenside-bunker']]],
         paint: {
-          'line-color': ['case', ['boolean', ['get', 'selected'], false], '#FBBF24', '#F4E4C1'],
-          'line-width': ['case', ['boolean', ['get', 'selected'], false], 3, 1.6],
+          'line-color': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            '#FBBF24',
+            mapStyle === 'digital' ? '#D6BC8B' : '#F4E4C1',
+          ],
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            3,
+            mapStyle === 'digital' ? 1.1 : 1.6,
+          ],
         },
       });
 
@@ -481,19 +1020,39 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         source: 'hole-hazards',
         filter: ['==', ['get', 'hazardType'], 'creek'],
         paint: {
-          'line-color': ['case', ['boolean', ['get', 'selected'], false], '#BAE6FD', '#38BDF8'],
-          'line-width': ['case', ['boolean', ['get', 'selected'], false], 4.2, 2.5],
+          'line-color': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            '#BAE6FD',
+            '#38BDF8',
+          ],
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            4.2,
+            2.5,
+          ],
           'line-dasharray': [2, 1.5],
         },
       });
 
       map.addLayer({
+        id: 'green-collar',
+        type: 'line',
+        source: 'hole-green',
+        layout: { visibility: digVis, 'line-join': 'round' },
+        paint: {
+          'line-color': '#1F6E3C',
+          'line-width': 5.5,
+        },
+      });
+      map.addLayer({
         id: 'green-fill',
         type: 'fill',
         source: 'hole-green',
         paint: {
-          'fill-color': '#34D399',
-          'fill-opacity': 0.22,
+          'fill-color': mapStyle === 'digital' ? '#6EE07B' : '#34D399',
+          'fill-opacity': mapStyle === 'digital' ? 0.96 : 0.22,
         },
       });
       map.addLayer({
@@ -501,8 +1060,8 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
         type: 'line',
         source: 'hole-green',
         paint: {
-          'line-color': '#34D399',
-          'line-width': 2.2,
+          'line-color': mapStyle === 'digital' ? '#BBF7D0' : '#34D399',
+          'line-width': mapStyle === 'digital' ? 1.8 : 2.2,
         },
       });
 
@@ -634,25 +1193,113 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
     };
   }, []);
 
-  // Toggle Esri vs USGS raster visibility cleanly
+  // Toggle Digital / Esri / USGS layers & adaptive paint
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
+    if (!map || !mapReady) return;
+
+    const isDigital = mapStyle === 'digital';
+    const digVis = isDigital ? 'visible' : 'none';
+
+    for (const id of DIGITAL_LAYER_IDS) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, 'visibility', digVis);
+      }
+    }
     if (map.getLayer('esri-layer')) {
       map.setLayoutProperty(
         'esri-layer',
         'visibility',
-        satelliteSource === 'esri' ? 'visible' : 'none'
+        mapStyle === 'esri' ? 'visible' : 'none'
       );
     }
     if (map.getLayer('usgs-layer')) {
       map.setLayoutProperty(
         'usgs-layer',
         'visibility',
-        satelliteSource === 'usgs' ? 'visible' : 'none'
+        mapStyle === 'usgs' ? 'visible' : 'none'
       );
     }
-  }, [satelliteSource]);
+
+    if (map.getLayer('green-fill')) {
+      map.setPaintProperty('green-fill', 'fill-color', isDigital ? '#6EE07B' : '#34D399');
+      map.setPaintProperty('green-fill', 'fill-opacity', isDigital ? 0.96 : 0.22);
+    }
+    if (map.getLayer('green-outline')) {
+      map.setPaintProperty('green-outline', 'line-color', isDigital ? '#BBF7D0' : '#34D399');
+      map.setPaintProperty('green-outline', 'line-width', isDigital ? 1.8 : 2.2);
+    }
+    if (map.getLayer('water-fill')) {
+      map.setPaintProperty('water-fill', 'fill-opacity', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        0.38,
+        isDigital ? 0.08 : 0.22,
+      ]);
+    }
+    if (map.getLayer('water-outline')) {
+      map.setPaintProperty('water-outline', 'line-width', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        3,
+        isDigital ? 1.2 : 1.8,
+      ]);
+    }
+    if (map.getLayer('bunker-fill')) {
+      map.setPaintProperty('bunker-fill', 'fill-opacity', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        0.42,
+        isDigital ? 0.08 : 0.22,
+      ]);
+    }
+    if (map.getLayer('bunker-outline')) {
+      map.setPaintProperty('bunker-outline', 'line-color', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        '#FBBF24',
+        isDigital ? '#D6BC8B' : '#F4E4C1',
+      ]);
+      map.setPaintProperty('bunker-outline', 'line-width', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        3,
+        isDigital ? 1.1 : 1.6,
+      ]);
+    }
+  }, [mapReady, mapStyle]);
+
+  // Update active-hole highlight filters in Digital mode
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const activeFwFilter: maplibregl.FilterSpecification = [
+      'all',
+      ['==', ['get', 'featureType'], 'fairway'],
+      ['==', ['get', 'holeNumber'], hole.holeNumber],
+    ];
+    const otherFwFilter: maplibregl.FilterSpecification = [
+      'all',
+      ['==', ['get', 'featureType'], 'fairway'],
+      ['!=', ['get', 'holeNumber'], hole.holeNumber],
+    ];
+    const otherGrnFilter: maplibregl.FilterSpecification = [
+      'all',
+      ['==', ['get', 'featureType'], 'green'],
+      ['!=', ['get', 'holeNumber'], hole.holeNumber],
+    ];
+
+    if (map.getLayer('digital-fairways-active')) {
+      map.setFilter('digital-fairways-active', activeFwFilter);
+      map.setFilter('digital-fairways-active-line', activeFwFilter);
+      map.setFilter('digital-fairways-other', otherFwFilter);
+      map.setFilter('digital-fairways-other-line', otherFwFilter);
+      map.setFilter('digital-greens-other-collar', otherGrnFilter);
+      map.setFilter('digital-greens-other-fill', otherGrnFilter);
+      map.setFilter('digital-greens-other-rim', otherGrnFilter);
+    }
+  }, [mapReady, hole.holeNumber]);
 
   // Sync GeoJSON sources & HTML markers whenever hole/player/target/hazard state changes
   useEffect(() => {
@@ -904,7 +1551,7 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
     layupMeasurement,
     selectedHazard,
     arcGeoJson,
-    satelliteSource,
+    mapStyle,
   ]);
 
   // Reframe camera when hole changes
@@ -948,8 +1595,8 @@ export const SatelliteHoleMap: React.FC<SatelliteHoleMapProps> = ({
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 w-full h-full bg-[#0D2B1A]"
-      aria-label={`Satellite map of Norbeck Country Club Hole ${hole.holeNumber}`}
+      className="absolute inset-0 w-full h-full bg-[#133420]"
+      aria-label={`Course map of Norbeck Country Club Hole ${hole.holeNumber}`}
     />
   );
 };

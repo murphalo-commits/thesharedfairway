@@ -143,6 +143,38 @@ function polylineCentroid(pts) {
   return roundPt({ lat, lng });
 }
 
+function clipPolylineToBox(pts, box) {
+  const isInside = (p) =>
+    p.lat >= box.minLat &&
+    p.lat <= box.maxLat &&
+    p.lng >= box.minLng &&
+    p.lng <= box.maxLng;
+
+  const runs = [];
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < pts.length; i++) {
+    if (isInside(pts[i])) {
+      if (start === -1) start = i;
+      end = i;
+    } else if (start !== -1) {
+      runs.push([start, end]);
+      start = -1;
+      end = -1;
+    }
+  }
+  if (start !== -1) runs.push([start, end]);
+
+  const segments = [];
+  for (const [rStart, rEnd] of runs) {
+    const i0 = Math.max(0, rStart - 1);
+    const i1 = Math.min(pts.length - 1, rEnd + 1);
+    const clipped = pts.slice(i0, i1 + 1);
+    if (clipped.length >= 2) segments.push(clipped);
+  }
+  return segments;
+}
+
 function main() {
   if (!fs.existsSync(OSM_CACHE_PATH)) {
     console.error(`OSM cache file missing at: ${OSM_CACHE_PATH}`);
@@ -168,6 +200,30 @@ function main() {
     throw new Error(`Expected 18 OSM golf=hole ways, found ${holeWays.length}`);
   }
 
+  const boundaryWay = osm.elements.find(
+    (el) => el.type === 'way' && el.id === 45754331
+  );
+  if (!boundaryWay) {
+    throw new Error('Missing Norbeck boundary way 45754331');
+  }
+  const boundary = stripClosingPoint(getWayPoints(boundaryWay));
+  const bLats = boundary.map((p) => p.lat);
+  const bLngs = boundary.map((p) => p.lng);
+  const marginLat = 120 / (M_PER_LAT * YD_PER_M);
+  const marginLng = 120 / (M_PER_LNG * YD_PER_M);
+  const courseBox = {
+    minLat: Math.min(...bLats),
+    maxLat: Math.max(...bLats),
+    minLng: Math.min(...bLngs),
+    maxLng: Math.max(...bLngs),
+  };
+  const paddedBox = {
+    minLat: courseBox.minLat - marginLat,
+    maxLat: courseBox.maxLat + marginLat,
+    minLng: courseBox.minLng - marginLng,
+    maxLng: courseBox.maxLng + marginLng,
+  };
+
   const greenWays = osm.elements
     .filter((el) => el.type === 'way' && el.tags?.golf === 'green')
     .map((w) => {
@@ -182,6 +238,13 @@ function main() {
       return { id: w.id, polygon, center: polygonCentroid(polygon) };
     });
 
+  const fairwayWays = osm.elements
+    .filter((el) => el.type === 'way' && el.tags?.golf === 'fairway')
+    .map((w) => {
+      const polygon = stripClosingPoint(getWayPoints(w));
+      return { id: w.id, polygon, center: polygonCentroid(polygon) };
+    });
+
   const bunkerWays = osm.elements
     .filter((el) => el.type === 'way' && el.tags?.golf === 'bunker')
     .map((w) => {
@@ -189,12 +252,26 @@ function main() {
       return { id: w.id, polygon, center: polygonCentroid(polygon) };
     });
 
-  const waterWays = osm.elements
+  const waterHazardWays = osm.elements
     .filter((el) => el.type === 'way' && el.tags?.golf === 'water_hazard')
     .map((w) => {
       const polygon = stripClosingPoint(getWayPoints(w));
       return { id: w.id, polygon, center: polygonCentroid(polygon) };
     });
+
+  const allWaterWays = osm.elements
+    .filter((el) => el.type === 'way' && el.tags?.natural === 'water')
+    .map((w) => {
+      const polygon = stripClosingPoint(getWayPoints(w));
+      return { id: w.id, polygon, center: polygonCentroid(polygon) };
+    })
+    .filter(
+      (w) =>
+        w.center.lat >= courseBox.minLat &&
+        w.center.lat <= courseBox.maxLat &&
+        w.center.lng >= courseBox.minLng &&
+        w.center.lng <= courseBox.maxLng
+    );
 
   const streamWays = osm.elements
     .filter((el) => el.type === 'way' && el.tags?.waterway === 'stream')
@@ -205,7 +282,7 @@ function main() {
     }));
 
   // 1. Match each hole to its green polygon
-  const matchedGreenIds = new Set();
+  const greenToHole = new Map();
   const holeDrafts = holeWays.map((hw, idx) => {
     const holeNumber = Number(hw.tags.ref);
     if (holeNumber !== idx + 1) {
@@ -227,7 +304,7 @@ function main() {
     if (!bestGreen) {
       throw new Error(`No green matched for hole ${holeNumber}`);
     }
-    matchedGreenIds.add(bestGreen.id);
+    greenToHole.set(bestGreen.id, holeNumber);
 
     const par = SCORECARD.pars[idx];
     const handicap = SCORECARD.handicaps[idx];
@@ -267,6 +344,7 @@ function main() {
   });
 
   // 2. Match tee polygons to nearest hole start within 65 yds
+  const teeToHole = new Map();
   for (const tw of teeWays) {
     let bestHole = null;
     let bestDist = Infinity;
@@ -279,21 +357,25 @@ function main() {
     }
     if (bestHole && bestDist <= 65) {
       bestHole.teePolygons.push(tw.polygon);
+      teeToHole.set(tw.id, bestHole.holeNumber);
+    } else {
+      teeToHole.set(tw.id, null);
     }
   }
 
   // 3. Identify practice greens & filter out practice-green bunkers
-  const practiceGreens = greenWays.filter((g) => !matchedGreenIds.has(g.id));
+  const practiceGreens = greenWays.filter((g) => !greenToHole.has(g.id));
   let excludedPracticeBunkers = 0;
   let keptBunkers = 0;
 
-  // Group bunkers per hole before finalizing labels so duplicates can be numbered
   const rawBunkersByHole = new Map(holeDrafts.map((h) => [h.holeNumber, []]));
+  const bunkerToHole = new Map();
 
   for (const b of bunkerWays) {
     const nearPractice = practiceGreens.some((pg) => distYards(b.center, pg.center) < 35);
     if (nearPractice) {
       excludedPracticeBunkers++;
+      bunkerToHole.set(b.id, null);
       continue;
     }
 
@@ -309,6 +391,7 @@ function main() {
 
     if (!bestHole || !bestProj) continue;
     keptBunkers++;
+    bunkerToHole.set(b.id, bestHole.holeNumber);
 
     const distToGreenCenter = distYards(b.center, bestHole.green.center);
     const type = distToGreenCenter < 42 ? 'greenside-bunker' : 'fairway-bunker';
@@ -353,7 +436,7 @@ function main() {
 
   // 4. Match water hazards (polygons within 40 yds of hole centerline)
   let waterAssignments = 0;
-  for (const w of waterWays) {
+  for (const w of waterHazardWays) {
     for (const h of holeDrafts) {
       const minEdgeDist = Math.min(
         ...w.polygon.map((pt) => distPointToPolyline(pt, h.centerline).dist)
@@ -382,7 +465,6 @@ function main() {
       const minDist = Math.min(...ptDists.map((d) => d.dist));
       if (minDist >= 30) continue;
 
-      // Extract contiguous runs within 65 yds (expanding by 1 neighbor point each side)
       let start = -1;
       let end = -1;
       let runBest = Infinity;
@@ -435,7 +517,90 @@ function main() {
     }
   }
 
-  // Course center from Norbeck boundary / average of green centers
+  // 6. Build full property Digital Course View vectors
+  const woods = osm.elements
+    .filter((el) => el.type === 'way' && el.tags?.natural === 'wood')
+    .map((w) => stripClosingPoint(getWayPoints(w)))
+    .filter((poly) => poly.length >= 3);
+
+  const fairways = fairwayWays.map((fw) => {
+    const samplePts = [fw.center, ...fw.polygon];
+    let bestHoleNum = null;
+    let bestDist = Infinity;
+    for (const h of holeDrafts) {
+      let minD = Infinity;
+      for (const pt of samplePts) {
+        const d = distPointToPolyline(pt, h.centerline).dist;
+        if (d < minD) minD = d;
+      }
+      if (minD < bestDist) {
+        bestDist = minD;
+        bestHoleNum = h.holeNumber;
+      }
+    }
+    return {
+      id: `fairway-${fw.id}`,
+      holeNumber: bestDist <= 45 ? bestHoleNum : null,
+      points: fw.polygon,
+    };
+  });
+
+  const greens = greenWays.map((g) => ({
+    id: `green-${g.id}`,
+    holeNumber: greenToHole.get(g.id) ?? null,
+    points: g.polygon,
+  }));
+
+  const tees = teeWays.map((t) => ({
+    id: `tee-${t.id}`,
+    holeNumber: teeToHole.get(t.id) ?? null,
+    points: t.polygon,
+  }));
+
+  const bunkers = bunkerWays.map((b) => ({
+    id: `bunker-${b.id}`,
+    holeNumber: bunkerToHole.get(b.id) ?? null,
+    points: b.polygon,
+  }));
+
+  const waters = allWaterWays.map((w) => w.polygon);
+
+  const streams = [];
+  for (const s of streamWays) {
+    streams.push(...clipPolylineToBox(s.points, paddedBox));
+  }
+
+  const cartpaths = osm.elements
+    .filter((el) => el.type === 'way' && el.tags?.golf === 'cartpath')
+    .map((w) => getWayPoints(w))
+    .filter((line) => line.length >= 2);
+
+  const drivingRangeWay = osm.elements.find(
+    (el) => el.type === 'way' && el.tags?.golf === 'driving_range'
+  );
+  const drivingRange = drivingRangeWay
+    ? stripClosingPoint(getWayPoints(drivingRangeWay))
+    : null;
+
+  const clubhouseWay = osm.elements.find(
+    (el) => el.type === 'way' && el.tags?.golf === 'clubhouse'
+  );
+  const clubhouse = clubhouseWay
+    ? stripClosingPoint(getWayPoints(clubhouseWay))
+    : null;
+
+  const pools = osm.elements
+    .filter((el) => el.type === 'way' && el.tags?.leisure === 'swimming_pool')
+    .map((w) => stripClosingPoint(getWayPoints(w)))
+    .filter((poly) => poly.length >= 3);
+
+  const roads = [];
+  for (const w of osm.elements.filter(
+    (el) => el.type === 'way' && el.tags?.highway === 'tertiary'
+  )) {
+    roads.push(...clipPolylineToBox(getWayPoints(w), paddedBox));
+  }
+
   const courseCenter = roundPt({
     lat: holeDrafts.reduce((s, h) => s + h.green.center.lat, 0) / holeDrafts.length,
     lng: holeDrafts.reduce((s, h) => s + h.green.center.lng, 0) / holeDrafts.length,
@@ -456,6 +621,21 @@ function main() {
     parTotal: SCORECARD.pars.reduce((a, b) => a + b, 0),
     teeInfo,
     holes: holeDrafts,
+    vectors: {
+      boundary,
+      woods,
+      fairways,
+      greens,
+      tees,
+      bunkers,
+      waters,
+      streams,
+      cartpaths,
+      drivingRange,
+      clubhouse,
+      pools,
+      roads,
+    },
   };
 
   fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
@@ -468,13 +648,11 @@ export const NORBECK_COURSE: CourseGpsData = ${JSON.stringify(course, null, 2)};
 
   console.log('Generated Norbeck GPS dataset ->', path.relative(process.cwd(), OUTPUT_PATH));
   console.log(
-    `Summary: ${holeDrafts.length} holes | ${matchedGreenIds.size} greens (${practiceGreens.length} practice greens skipped) | ${keptBunkers} bunkers (${excludedPracticeBunkers} practice bunkers excluded) | ${waterAssignments} water assignments | ${creekAssignments} creek crossings`
+    `Summary: ${holeDrafts.length} holes | ${greenToHole.size} greens (${practiceGreens.length} practice greens skipped) | ${keptBunkers} bunkers (${excludedPracticeBunkers} practice bunkers excluded) | ${waterAssignments} water assignments | ${creekAssignments} creek crossings`
   );
-  for (const h of holeDrafts) {
-    console.log(
-      `  Hole ${String(h.holeNumber).padStart(2)} (Par ${h.par}, HCP ${String(h.handicap).padStart(2)}): ${h.teePolygons.length} tee poly, ${h.green.polygon.length} green pts, ${h.hazards.length} hazards`
-    );
-  }
+  console.log(
+    `Digital vectors: boundary=${boundary.length}pts, woods=${woods.length}, fairways=${fairways.length}, greens=${greens.length}, tees=${tees.length}, bunkers=${bunkers.length}, waters=${waters.length}, streams=${streams.length}, cartpaths=${cartpaths.length}, pools=${pools.length}, roads=${roads.length}`
+  );
 }
 
 main();

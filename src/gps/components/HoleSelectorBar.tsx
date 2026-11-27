@@ -14,7 +14,7 @@ import {
   CourseGpsData,
   GpsMode,
   HoleGpsData,
-  SatelliteSource,
+  MapStyle,
   TeeName,
 } from '../types';
 import { GpsStatus } from '../hooks/useGolfGps';
@@ -27,13 +27,13 @@ interface HoleSelectorBarProps {
   gpsStatus: GpsStatus;
   accuracyYards: number | null;
   wakeLockActive: boolean;
-  satelliteSource: SatelliteSource;
+  mapStyle: MapStyle;
   showArcs: boolean;
   detectedHole: { holeNumber: number; distanceYards: number } | null;
   dismissedAutoHole: number | null;
   onSelectHole: (holeNumber: number) => void;
   onSelectTee: (tee: TeeName) => void;
-  onSelectSatelliteSource: (src: SatelliteSource) => void;
+  onSelectMapStyle: (style: MapStyle) => void;
   onToggleArcs: () => void;
   onSwitchToLive: () => void;
   onSwitchToPreview: () => void;
@@ -51,13 +51,13 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
   gpsStatus,
   accuracyYards,
   wakeLockActive,
-  satelliteSource,
+  mapStyle,
   showArcs,
   detectedHole,
   dismissedAutoHole,
   onSelectHole,
   onSelectTee,
-  onSelectSatelliteSource,
+  onSelectMapStyle,
   onToggleArcs,
   onSwitchToLive,
   onSwitchToPreview,
@@ -294,57 +294,50 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
                 </div>
               </div>
 
-              {/* Satellite Source & Arcs */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* Map View & Arcs */}
+              <div className="space-y-2.5">
                 <div>
                   <div className="text-[11px] uppercase tracking-wider text-emerald-200/75 font-semibold mb-1.5 flex items-center gap-1">
-                    <Satellite className="w-3 h-3" /> Imagery
+                    <Satellite className="w-3 h-3" /> Map View
                   </div>
-                  <div className="grid grid-cols-2 gap-1 bg-black/25 p-1 rounded-xl border border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => onSelectSatelliteSource('esri')}
-                      className={`py-1 rounded-lg text-xs font-semibold transition-colors ${
-                        satelliteSource === 'esri'
-                          ? 'bg-[#2E8B57] text-white'
-                          : 'text-emerald-100/70 hover:text-white'
-                      }`}
-                    >
-                      Esri
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSelectSatelliteSource('usgs')}
-                      className={`py-1 rounded-lg text-xs font-semibold transition-colors ${
-                        satelliteSource === 'usgs'
-                          ? 'bg-[#2E8B57] text-white'
-                          : 'text-emerald-100/70 hover:text-white'
-                      }`}
-                    >
-                      USGS
-                    </button>
+                  <div className="grid grid-cols-3 gap-1 bg-black/25 p-1 rounded-xl border border-white/10">
+                    {(
+                      [
+                        ['digital', 'Digital'],
+                        ['esri', 'Esri Sat'],
+                        ['usgs', 'USGS Sat'],
+                      ] as const
+                    ).map(([styleKey, label]) => (
+                      <button
+                        key={styleKey}
+                        type="button"
+                        onClick={() => onSelectMapStyle(styleKey)}
+                        className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          mapStyle === styleKey
+                            ? 'bg-[#2E8B57] text-white shadow'
+                            : 'text-emerald-100/70 hover:text-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div>
-                  <div className="text-[11px] uppercase tracking-wider text-emerald-200/75 font-semibold mb-1.5">
-                    Yardage Arcs
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onToggleArcs}
-                    className={`w-full py-1.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors ${
-                      showArcs
-                        ? 'bg-[#2E8B57]/70 border-emerald-400/50 text-white'
-                        : 'bg-white/5 border-white/10 text-emerald-100/75'
-                    }`}
-                  >
-                    <span>100 / 150 / 200</span>
-                    <span className="font-mono text-[11px]">
-                      {showArcs ? 'ON' : 'OFF'}
-                    </span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={onToggleArcs}
+                  className={`w-full py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors ${
+                    showArcs
+                      ? 'bg-[#2E8B57]/70 border-emerald-400/50 text-white'
+                      : 'bg-white/5 border-white/10 text-emerald-100/75'
+                  }`}
+                >
+                  <span>Yardage Arcs (100 / 150 / 200)</span>
+                  <span className="font-mono text-[11px]">
+                    {showArcs ? 'ON' : 'OFF'}
+                  </span>
+                </button>
               </div>
 
               {/* GPS Mode */}

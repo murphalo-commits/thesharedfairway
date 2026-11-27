@@ -45,6 +45,28 @@ export interface TeeMeta {
   slope: number;
 }
 
+export interface CourseVectorPolygon {
+  id: string;
+  holeNumber: number | null;
+  points: LatLng[];
+}
+
+export interface CourseMapVectors {
+  boundary: LatLng[];
+  woods: LatLng[][];
+  fairways: CourseVectorPolygon[];
+  greens: CourseVectorPolygon[];
+  tees: CourseVectorPolygon[];
+  bunkers: CourseVectorPolygon[];
+  waters: LatLng[][];
+  streams: LatLng[][];
+  cartpaths: LatLng[][];
+  drivingRange: LatLng[] | null;
+  clubhouse: LatLng[] | null;
+  pools: LatLng[][];
+  roads: LatLng[][];
+}
+
 export interface CourseGpsData {
   id: string;
   name: string;
@@ -54,6 +76,7 @@ export interface CourseGpsData {
   parTotal: number;
   teeInfo: Record<TeeName, TeeMeta>;
   holes: HoleGpsData[];
+  vectors: CourseMapVectors;
 }
 
 export interface GreenDistances {
@@ -87,4 +110,4 @@ export interface LayupMeasurement {
 
 export type GpsMode = 'live' | 'preview';
 export type MapOrientation = 'tee-up' | 'north-up';
-export type SatelliteSource = 'esri' | 'usgs';
+export type MapStyle = 'digital' | 'esri' | 'usgs';

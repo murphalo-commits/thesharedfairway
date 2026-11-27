@@ -1,10 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Compass, Crosshair, Flag, MapPin, Maximize2 } from 'lucide-react';
+import {
+  Compass,
+  Crosshair,
+  Flag,
+  Layers,
+  MapPin,
+  Maximize2,
+  Satellite,
+} from 'lucide-react';
 import { NORBECK_COURSE } from './data/norbeckCourse';
 import {
   LatLng,
   MapOrientation,
-  SatelliteSource,
+  MapStyle,
   TeeName,
 } from './types';
 import {
@@ -28,7 +36,7 @@ const PREFS_STORAGE_KEY = 'tsf_norbeck_gps_prefs_v1';
 interface StoredGpsPrefs {
   holeNumber: number;
   selectedTee: TeeName;
-  satelliteSource: SatelliteSource;
+  mapStyle: MapStyle;
   orientation: MapOrientation;
   showArcs: boolean;
 }
@@ -36,7 +44,7 @@ interface StoredGpsPrefs {
 const DEFAULT_PREFS: StoredGpsPrefs = {
   holeNumber: 1,
   selectedTee: 'blue',
-  satelliteSource: 'esri',
+  mapStyle: 'digital',
   orientation: 'tee-up',
   showArcs: true,
 };
@@ -57,15 +65,19 @@ function loadPrefs(): StoredGpsPrefs {
       parsed.selectedTee && validTees.includes(parsed.selectedTee)
         ? parsed.selectedTee
         : DEFAULT_PREFS.selectedTee;
-    const satelliteSource =
-      parsed.satelliteSource === 'usgs' ? 'usgs' : 'esri';
+    const mapStyle: MapStyle =
+      parsed.mapStyle === 'esri' ||
+      parsed.mapStyle === 'usgs' ||
+      parsed.mapStyle === 'digital'
+        ? parsed.mapStyle
+        : DEFAULT_PREFS.mapStyle;
     const orientation =
       parsed.orientation === 'north-up' ? 'north-up' : 'tee-up';
     const showArcs =
       typeof parsed.showArcs === 'boolean'
         ? parsed.showArcs
         : DEFAULT_PREFS.showArcs;
-    return { holeNumber, selectedTee, satelliteSource, orientation, showArcs };
+    return { holeNumber, selectedTee, mapStyle, orientation, showArcs };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -160,9 +172,10 @@ export function GpsApp() {
 
   return (
     <main className="relative w-full h-full overflow-hidden bg-[#0D2B1A] select-none">
-      {/* Full-screen interactive satellite hole view */}
+      {/* Full-screen interactive course map */}
       <SatelliteHoleMap
         hole={activeHole}
+        courseVectors={NORBECK_COURSE.vectors}
         playerPosition={gps.activePosition}
         gpsMode={gps.gpsMode}
         accuracyYards={gps.accuracyYards}
@@ -171,7 +184,7 @@ export function GpsApp() {
         layupMeasurement={layupMeasurement}
         selectedHazard={selectedHazard}
         orientation={prefs.orientation}
-        satelliteSource={prefs.satelliteSource}
+        mapStyle={prefs.mapStyle}
         showArcs={prefs.showArcs}
         cameraCommand={cameraCommand}
         onTargetChange={setTargetPosition}
@@ -188,7 +201,7 @@ export function GpsApp() {
         gpsStatus={gps.status}
         accuracyYards={gps.accuracyYards}
         wakeLockActive={gps.wakeLockActive}
-        satelliteSource={prefs.satelliteSource}
+        mapStyle={prefs.mapStyle}
         showArcs={prefs.showArcs}
         detectedHole={detectedHole}
         dismissedAutoHole={dismissedAutoHole}
@@ -196,8 +209,8 @@ export function GpsApp() {
         onSelectTee={(selectedTee) =>
           setPrefs((prev) => ({ ...prev, selectedTee }))
         }
-        onSelectSatelliteSource={(satelliteSource) =>
-          setPrefs((prev) => ({ ...prev, satelliteSource }))
+        onSelectMapStyle={(mapStyle) =>
+          setPrefs((prev) => ({ ...prev, mapStyle }))
         }
         onToggleArcs={() =>
           setPrefs((prev) => ({ ...prev, showArcs: !prev.showArcs }))
@@ -266,6 +279,36 @@ export function GpsApp() {
           <Compass className="w-3.5 h-3.5 text-[#D4AF37]" />
           <span className="text-[8px] font-mono font-bold leading-none mt-0.5">
             {prefs.orientation === 'tee-up' ? 'TEE↑' : 'N↑'}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setPrefs((prev) => ({
+              ...prev,
+              mapStyle: prev.mapStyle === 'digital' ? 'esri' : 'digital',
+            }))
+          }
+          className={`w-10 h-10 rounded-xl backdrop-blur-md border active:scale-95 transition-all shadow-xl flex flex-col items-center justify-center ${
+            prefs.mapStyle === 'digital'
+              ? 'bg-[#2E8B57]/90 border-emerald-300/60 text-white'
+              : 'bg-[#143F27]/90 border-white/20 text-[#F4E4C1] hover:bg-[#1E5E3A]'
+          }`}
+          title={
+            prefs.mapStyle === 'digital'
+              ? 'Digital Course View (tap for Satellite)'
+              : 'Satellite View (tap for Digital Course)'
+          }
+          aria-label="Toggle Digital or Satellite map view"
+        >
+          {prefs.mapStyle === 'digital' ? (
+            <Layers className="w-3.5 h-3.5" />
+          ) : (
+            <Satellite className="w-3.5 h-3.5" />
+          )}
+          <span className="text-[8px] font-mono font-bold leading-none mt-0.5">
+            {prefs.mapStyle === 'digital' ? 'DIG' : 'SAT'}
           </span>
         </button>
 
