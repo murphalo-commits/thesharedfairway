@@ -105,13 +105,13 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
     <>
       <header className="fixed top-0 left-0 right-0 z-30 px-3 pt-[max(0.65rem,env(safe-area-inset-top))] pointer-events-none">
         <div className="max-w-3xl mx-auto flex flex-col gap-2 pointer-events-auto">
-          <div className="flex items-center justify-between gap-2 bg-[#143F27]/92 backdrop-blur-md border border-white/15 rounded-2xl px-2 py-1.5 shadow-2xl">
+          <div className="flex items-center justify-between gap-1.5 bg-[#143F27]/92 backdrop-blur-md border border-white/15 rounded-2xl px-1.5 py-1.5 shadow-2xl">
             {/* Prev / Hole Summary / Next */}
-            <div className="flex items-center gap-1 min-w-0">
+            <div className="flex items-center gap-0.5 min-w-0">
               <button
                 type="button"
                 onClick={() => onSelectHole(prevHole)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-100 hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-emerald-100 hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
                 aria-label={`Previous hole (${prevHole})`}
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -123,10 +123,10 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
                   setShowSettings(false);
                   setShowHoleGrid(true);
                 }}
-                className="flex items-center gap-2 px-2 py-1 rounded-xl hover:bg-white/10 active:bg-white/15 transition-colors min-w-0 text-left"
+                className="flex items-center gap-1.5 px-1.5 py-1 rounded-xl hover:bg-white/10 active:bg-white/15 transition-colors min-w-0 text-left"
               >
-                <div className="flex items-baseline gap-1.5 shrink-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/80">
+                <div className="flex items-baseline gap-1 shrink-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200/80">
                     Hole
                   </span>
                   <span className="font-mono text-xl font-extrabold text-white leading-none">
@@ -135,12 +135,12 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
                 </div>
                 <div className="h-5 w-px bg-white/15 shrink-0" />
                 <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-white leading-tight">
-                    <span>Par {hole.par}</span>
+                  <div className="flex items-center gap-1 text-xs font-semibold text-white leading-tight whitespace-nowrap">
+                    <span className="whitespace-nowrap">Par {hole.par}</span>
                     <span className="text-white/40">·</span>
-                    <span className="font-mono text-[#F4E4C1]">{currentHoleYards}y</span>
+                    <span className="font-mono text-[#F4E4C1] whitespace-nowrap">{currentHoleYards}y</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-200/75 leading-tight truncate">
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-200/75 leading-tight whitespace-nowrap truncate">
                     <span
                       className="w-2 h-2 rounded-full border border-white/40 inline-block shrink-0"
                       style={{ backgroundColor: currentTeeMeta.color }}
@@ -156,7 +156,7 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectHole(nextHole)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-100 hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-emerald-100 hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
                 aria-label={`Next hole (${nextHole})`}
               >
                 <ChevronRight className="w-5 h-5" />
@@ -164,14 +164,14 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
             </div>
 
             {/* Right: GPS status pill + Settings */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setShowHoleGrid(false);
                   setShowSettings((prev) => !prev);
                 }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold tracking-wide flex items-center gap-1.5 border transition-colors ${
+                className={`px-2 py-1 rounded-xl text-[10px] font-bold tracking-wide flex items-center gap-1 border transition-colors whitespace-nowrap ${
                   gpsMode === 'live'
                     ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
                     : 'bg-[#F4E4C1]/15 border-[#F4E4C1]/40 text-[#F4E4C1]'
@@ -179,7 +179,7 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
                 aria-label="GPS Status and Settings"
               >
                 <span
-                  className={`w-2 h-2 rounded-full ${
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     gpsMode === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-[#D4AF37]'
                   }`}
                 />
@@ -198,7 +198,7 @@ export const HoleSelectorBar: React.FC<HoleSelectorBarProps> = ({
                   setShowHoleGrid(false);
                   setShowSettings((prev) => !prev);
                 }}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
                   showSettings
                     ? 'bg-[#2E8B57] text-white'
                     : 'text-emerald-100 hover:bg-white/10 active:bg-white/20'

@@ -237,7 +237,7 @@ function createStripePattern(
 }
 
 function createWoodsPattern(): { width: number; height: number; data: Uint8Array } {
-  const size = 48;
+  const size = 64;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -249,12 +249,12 @@ function createWoodsPattern(): { width: number; height: number; data: Uint8Array
   ctx.fillRect(0, 0, size, size);
 
   const circles: [number, number, number, string][] = [
-    [10, 12, 8, '#1D4E30'],
-    [32, 10, 9, '#12341F'],
-    [22, 26, 10, '#235A38'],
-    [40, 32, 8, '#1D4E30'],
-    [8, 38, 7, '#12341F'],
-    [26, 44, 7, '#1D4E30'],
+    [13, 16, 11, '#1D4E30'],
+    [43, 13, 12, '#12341F'],
+    [29, 35, 13, '#235A38'],
+    [53, 43, 11, '#1D4E30'],
+    [11, 51, 9, '#12341F'],
+    [35, 59, 9, '#1D4E30'],
   ];
 
   for (const [cx, cy, r, fill] of circles) {
